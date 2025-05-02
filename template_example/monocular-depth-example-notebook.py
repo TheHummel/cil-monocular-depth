@@ -43,7 +43,7 @@ WEIGHT_DECAY = 1e-4
 NUM_EPOCHS = 1
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 INPUT_SIZE = (426, 560)
-NUM_WORKERS = 4
+NUM_WORKERS = 2
 PIN_MEMORY = True
 
 # ### Helper functions
@@ -83,57 +83,60 @@ class DepthDataset(Dataset):
         self.transform = transform
         self.target_transform = target_transform
         self.has_gt = has_gt
-
-        # Read file list
+        self.skipped_files = 0
         with open(list_file, "r") as f:
             if has_gt:
                 self.file_pairs = [line.strip().split() for line in f]
             else:
-                # For test set without ground truth
                 self.file_list = [line.strip() for line in f]
 
-    def __len__(self):
-        return len(self.file_pairs if self.has_gt else self.file_list)
-
     def __getitem__(self, idx):
-        if self.has_gt:
-            rgb_path = os.path.join(self.data_dir, self.file_pairs[idx][0])
-            depth_path = os.path.join(self.data_dir, self.file_pairs[idx][1])
-
-            # Load RGB image
-            rgb = Image.open(rgb_path).convert("RGB")
-
-            # Load depth map
-            depth = np.load(depth_path).astype(np.float32)
-            depth = torch.from_numpy(depth)
-
-            # Apply transformations
-            if self.transform:
-                rgb = self.transform(rgb)
-
-            if self.target_transform:
-                depth = self.target_transform(depth)
+        try:
+            if self.has_gt:
+                rgb_path = os.path.join(self.data_dir, self.file_pairs[idx][0])
+                depth_path = os.path.join(self.data_dir, self.file_pairs[idx][1])
+                if not (os.path.exists(rgb_path) and os.path.exists(depth_path)):
+                    self.skipped_files += 1
+                    return None
+                rgb = Image.open(rgb_path).convert("RGB")
+                depth = np.load(depth_path)
+                if isinstance(depth, list):
+                    self.skipped_files += 1
+                    return None
+                depth = depth.astype(np.float32)
+                depth = torch.from_numpy(depth)
+                if self.transform:
+                    rgb = self.transform(rgb)
+                if self.target_transform:
+                    depth = self.target_transform(depth)
+                else:
+                    depth = depth.unsqueeze(0)
+                return rgb, depth, self.file_pairs[idx][0]
             else:
-                # Add channel dimension if not done by transform
-                depth = depth.unsqueeze(0)
+                rgb_path = os.path.join(
+                    self.data_dir, self.file_list[idx].split(" ")[0]
+                )
+                if not os.path.exists(rgb_path):
+                    self.skipped_files += 1
+                    return None
+                rgb = Image.open(rgb_path).convert("RGB")
+                if self.transform:
+                    rgb = self.transform(rgb)
+                return rgb, self.file_list[idx]
+        except Exception as e:
+            self.skipped_files += 1
+            return None
 
-            return (
-                rgb,
-                depth,
-                self.file_pairs[idx][0],
-            )  # Return filename for saving predictions
-        else:
-            # For test set without ground truth
-            rgb_path = os.path.join(self.data_dir, self.file_list[idx].split(" ")[0])
+    def get_skipped_count(self):
+        return self.skipped_files
 
-            # Load RGB image
-            rgb = Image.open(rgb_path).convert("RGB")
 
-            # Apply transformations
-            if self.transform:
-                rgb = self.transform(rgb)
-
-            return rgb, self.file_list[idx]  # No depth, just return the filename
+def custom_collate_fn(batch):
+    # handle None values in the batch
+    batch = [item for item in batch if item is not None]
+    if len(batch) == 0:
+        return None
+    return torch.utils.data.dataloader.default_collate(batch)
 
 
 # # Model - U-net
@@ -220,8 +223,12 @@ def train_model(
         # Training phase
         model.train()
         train_loss = 0.0
+        train_samples = 0
 
-        for inputs, targets, _ in tqdm(train_loader, desc="Training"):
+        for batch in tqdm(train_loader, desc="Training"):
+            if batch is None:
+                continue
+            inputs, targets, _ = batch
             inputs, targets = inputs.to(device), targets.to(device)
 
             # Zero the gradients
@@ -236,16 +243,21 @@ def train_model(
             optimizer.step()
 
             train_loss += loss.item() * inputs.size(0)
+            train_samples += inputs.size(0)
 
-        train_loss /= len(train_loader.dataset)
+        train_loss /= train_samples or 1
         train_losses.append(train_loss)
 
         # Validation phase
         model.eval()
         val_loss = 0.0
+        val_samples = 0
 
         with torch.no_grad():
-            for inputs, targets, _ in tqdm(val_loader, desc="Validation"):
+            for batch in val_loader:
+                if batch is None:
+                    continue
+                inputs, targets, _ = batch
                 inputs, targets = inputs.to(device), targets.to(device)
 
                 # Forward pass
@@ -253,8 +265,9 @@ def train_model(
                 loss = criterion(outputs, targets)
 
                 val_loss += loss.item() * inputs.size(0)
+                val_samples += inputs.size(0)
 
-        val_loss /= len(val_loader.dataset)
+        val_loss /= val_samples or 1
         val_losses.append(val_loss)
 
         print(f"Train Loss: {train_loss:.4f}, Validation Loss: {val_loss:.4f}")
@@ -512,14 +525,18 @@ def main():
         target_transform=target_transform,
         has_gt=True,
     )
+    print(
+        f"Skipped files in training dataset: {train_full_dataset.get_skipped_count()}"
+    )
 
     # Create test dataset without ground truth
     test_dataset = DepthDataset(
         data_dir=test_dir,
         list_file=test_list_file,
         transform=test_transform,
-        has_gt=False,  # Test set has no ground truth
+        has_gt=False,
     )
+    print(f"Skipped files in test dataset: {test_dataset.get_skipped_count()}")
 
     # Split training dataset into train and validation
     total_size = len(train_full_dataset)
@@ -543,22 +560,23 @@ def main():
         pin_memory=PIN_MEMORY,
         drop_last=True,
         persistent_workers=True,
+        collate_fn=custom_collate_fn,
     )
-
     val_loader = DataLoader(
         val_dataset,
         batch_size=BATCH_SIZE,
         shuffle=False,
         num_workers=NUM_WORKERS,
         pin_memory=PIN_MEMORY,
+        collate_fn=custom_collate_fn,
     )
-
     test_loader = DataLoader(
         test_dataset,
         batch_size=BATCH_SIZE,
         shuffle=False,
         num_workers=NUM_WORKERS,
         pin_memory=PIN_MEMORY,
+        collate_fn=custom_collate_fn,
     )
 
     print(
@@ -630,4 +648,4 @@ main()
 
 
 # Open a sample prediction from validation set
-Image.open("/kaggle/working/results/sample_0.png")
+# Image.open(os.path.join(results_dir, "sample_0.png"))
