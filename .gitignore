@@ -1,6 +1,8 @@
 */tmp
 */logs
 
+*.pyc
+
 .env
 
 template_example/data/monocular_depth_output/predictions
