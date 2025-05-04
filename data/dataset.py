@@ -1,5 +1,4 @@
 import os
-
 import numpy as np
 import torch
 from PIL import Image
@@ -20,6 +19,9 @@ class DepthDataset(Dataset):
                 self.file_pairs = [line.strip().split() for line in f]
             else:
                 self.file_list = [line.strip() for line in f]
+
+    def __len__(self):
+        return len(self.file_pairs if self.has_gt else self.file_list)
 
     def __getitem__(self, idx):
         try:

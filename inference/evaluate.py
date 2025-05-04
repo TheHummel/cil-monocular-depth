@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from config import results_dir, predictions_dir
-from utils import ensure_dir
+from utils.helpers import ensure_dir
 
 
 def evaluate_model(model, val_loader, device):

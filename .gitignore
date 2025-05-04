@@ -1,6 +1,8 @@
 */tmp
 */logs
 
+.env
+
 template_example/data/monocular_depth_output/predictions
 template_example/data/monocular_depth_output/results/*png
 template_example/data/monocular_depth_output/results/*pth
