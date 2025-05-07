@@ -165,6 +165,7 @@ def main():
         NUM_EPOCHS,
         DEVICE,
         results_dir,
+        in_epoch_validation=True,
     )
 
     # Evaluate model
