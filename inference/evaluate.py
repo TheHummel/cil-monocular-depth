@@ -166,7 +166,7 @@ def generate_test_predictions(model, test_loader, device):
             batch_size = inputs.size(0)
 
             # Forward pass
-            outputs = model(inputs)
+            outputs = model(inputs).predicted_depth
 
             # Resize outputs to match original input dimensions (426x560)
             outputs = nn.functional.interpolate(

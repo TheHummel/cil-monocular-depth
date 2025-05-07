@@ -6,12 +6,10 @@ from torch.utils.data import Dataset
 
 
 class DepthDataset(Dataset):
-    def __init__(
-        self, data_dir, list_file, transform=None, target_transform=None, has_gt=True
-    ):
+    def __init__(self, data_dir, list_file, input_size, transform=None, has_gt=True):
         self.data_dir = data_dir
+        self.input_size = input_size
         self.transform = transform
-        self.target_transform = target_transform
         self.has_gt = has_gt
         self.skipped_files = 0
         with open(list_file, "r") as f:
@@ -40,10 +38,7 @@ class DepthDataset(Dataset):
                 depth = torch.from_numpy(depth)
                 if self.transform:
                     rgb = self.transform(rgb)
-                if self.target_transform:
-                    depth = self.target_transform(depth)
-                else:
-                    depth = depth.unsqueeze(0)
+                depth = self.target_transform(depth)
                 return rgb, depth, self.file_pairs[idx][0]
             else:
                 rgb_path = os.path.join(
@@ -59,6 +54,17 @@ class DepthDataset(Dataset):
         except Exception as e:
             self.skipped_files += 1
             return None
+
+    def target_transform(self, depth):
+        depth = torch.nn.functional.interpolate(
+            depth.unsqueeze(0).unsqueeze(0),
+            size=self.input_size,
+            mode="bilinear",
+            align_corners=True,
+        ).squeeze()
+
+        depth = depth.unsqueeze(0)
+        return depth
 
     def get_skipped_count(self):
         return self.skipped_files

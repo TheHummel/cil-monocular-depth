@@ -4,7 +4,14 @@ from tqdm import tqdm
 
 
 def train_model(
-    model, train_loader, val_loader, criterion, optimizer, num_epochs, device
+    model,
+    train_loader,
+    val_loader,
+    criterion,
+    optimizer,
+    num_epochs,
+    device,
+    results_dir,
 ):
     """Train the model and save the best based on validation metrics"""
     best_val_loss = float("inf")
@@ -30,7 +37,7 @@ def train_model(
             optimizer.zero_grad()
 
             # Forward pass
-            outputs = model(inputs)
+            outputs = model(inputs).predicted_depth
             loss = criterion(outputs, targets)
 
             # Backward pass and optimize
@@ -56,7 +63,7 @@ def train_model(
                 inputs, targets = inputs.to(device), targets.to(device)
 
                 # Forward pass
-                outputs = model(inputs)
+                outputs = model(inputs).predicted_depth
                 loss = criterion(outputs, targets)
 
                 val_loss += loss.item() * inputs.size(0)

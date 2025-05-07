@@ -4,20 +4,16 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from transformers import AutoModelForDepthEstimation, AutoImageProcessor
-from dotenv import load_dotenv
 
 from data.dataset import DepthDataset
-from utils.helpers import ensure_dir, target_transform, custom_collate_fn
+from utils.helpers import (
+    ensure_dir,
+    custom_collate_fn,
+    load_model_from_hf,
+)
 from training.train import train_model
 from inference.evaluate import evaluate_model, generate_test_predictions
 from config import *
-
-
-load_dotenv()
-hf_token = os.getenv("HF_TOKEN")
-if not hf_token:
-    raise ValueError("HF_TOKEN not found in .env file. Please add it.")
 
 
 class SiLogLoss(nn.Module):
@@ -64,8 +60,8 @@ def main():
     train_full_dataset = DepthDataset(
         data_dir=train_dir,
         list_file=train_list_file,
+        input_size=INPUT_SIZE,
         transform=train_transform,
-        target_transform=lambda depth: target_transform(depth, INPUT_SIZE),
         has_gt=True,
     )
     print(
@@ -74,6 +70,7 @@ def main():
     test_dataset = DepthDataset(
         data_dir=test_dir,
         list_file=test_list_file,
+        input_size=INPUT_SIZE,
         transform=test_transform,
         has_gt=False,
     )
@@ -133,9 +130,18 @@ def main():
 
     # Load pretrained model
     print("Loading pretrained model...")
-    model = AutoModelForDepthEstimation.from_pretrained(
-        "depth-anything/Depth-Anything-V2-Small", token=hf_token
-    )
+    # model_name = "depth-anything/Depth-Anything-V2-Small"
+    model_name = "Intel/dpt-large"
+
+    model = load_model_from_hf(model_name, device=DEVICE)
+
+    # Freeze backbone to save compute
+    # for param in model.backbone.parameters():
+    #     param.requires_grad = False
+
+    for param in model.dpt.parameters():
+        param.requires_grad = False
+
     model = nn.DataParallel(model)
     model = model.to(DEVICE)
     print(f"Using device: {DEVICE}")
@@ -144,17 +150,22 @@ def main():
             f"Memory allocated after model init: {torch.cuda.memory_allocated(0) / 1e9:.2f} GB"
         )
 
-    # Freeze backbone to save compute
-    for param in model.backbone.parameters():
-        param.requires_grad = False
-
     # Define loss and optimizer
     criterion = SiLogLoss()
     optimizer = optim.AdamW(model.parameters(), lr=1e-5, weight_decay=WEIGHT_DECAY)
 
     # Finetune model
     print("Starting finetuning...")
-    model = #TODO
+    model = train_model(
+        model,
+        train_loader,
+        val_loader,
+        criterion,
+        optimizer,
+        NUM_EPOCHS,
+        DEVICE,
+        results_dir,
+    )
 
     # Evaluate model
     print("Evaluating model on validation set...")
