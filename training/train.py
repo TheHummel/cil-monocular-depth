@@ -1,6 +1,9 @@
 import os
 import torch
 from tqdm import tqdm
+import sys
+
+from utils.helpers import print_tqdm
 
 
 def train_model(
@@ -14,12 +17,14 @@ def train_model(
     results_dir,
     in_epoch_validation=False,
 ):
-    """Train the model and save the best based on validation metrics"""
+    """Train the model with optional validation every 10% of training and save the best based on epoch-level validation metrics"""
     best_val_loss = float("inf")
     best_epoch = 0
     train_losses = []
     val_losses = []
+    model_saved = False
 
+    # Calculate the number of batches for 10% of training if in_epoch_validation is enabled
     total_batches = len(train_loader)
     validation_interval = (
         max(1, total_batches // 10) if in_epoch_validation else total_batches
@@ -36,7 +41,11 @@ def train_model(
 
         for batch_idx, batch in enumerate(tqdm(train_loader, desc="Training")):
             if batch is None:
+                print_tqdm(
+                    f"Warning: Skipped training batch {batch_idx+1}/{total_batches}"
+                )
                 continue
+
             inputs, targets, _ = batch
             inputs, targets = inputs.to(device), targets.to(device)
 
@@ -46,6 +55,12 @@ def train_model(
             # Forward pass
             outputs = model(inputs).predicted_depth
             loss = criterion(outputs, targets)
+
+            if torch.isnan(loss) or torch.isinf(loss):
+                print_tqdm(
+                    f"Warning: Invalid training loss at batch {batch_idx+1}: {loss.item()}"
+                )
+                continue
 
             # Backward pass and optimize
             loss.backward()
@@ -59,13 +74,13 @@ def train_model(
                 (batch_idx + 1) % validation_interval == 0
                 or (batch_idx + 1) == total_batches
             ):
-                # In-epoch validation phase
+                # in-batch validation
                 model.eval()
                 val_loss = 0.0
                 val_samples = 0
 
                 with torch.no_grad():
-                    for val_batch in val_loader:
+                    for val_batch_idx, val_batch in enumerate(val_loader):
                         if val_batch is None:
                             continue
                         val_inputs, val_targets, _ = val_batch
@@ -73,23 +88,43 @@ def train_model(
                             device
                         )
 
-                        # Forward pass
                         val_outputs = model(val_inputs).predicted_depth
                         val_loss_batch = criterion(val_outputs, val_targets)
+
+                        if torch.isnan(val_loss_batch) or torch.isinf(val_loss_batch):
+                            print_tqdm(
+                                f"Warning: Invalid in-epoch validation loss at batch {val_batch_idx+1}: {val_loss_batch.item()}"
+                            )
+                            continue
 
                         val_loss += val_loss_batch.item() * val_inputs.size(0)
                         val_samples += val_inputs.size(0)
 
-                val_loss /= val_samples or 1
+                if val_samples == 0:
+                    print_tqdm(
+                        f"Warning: No valid validation samples at {batch_idx+1}/{total_batches}"
+                    )
+                    model.train()
+                    continue
+
+                val_loss /= val_samples
                 percentage = (batch_idx + 1) / total_batches * 100
-                print(
+                print_tqdm(
                     f"Validation at {percentage:.1f}% of epoch {epoch+1}: Validation Loss: {val_loss:.4f}"
                 )
+
+                with open(
+                    os.path.join(results_dir, "in_epoch_val_losses.txt"), "a"
+                ) as f:
+                    f.write(f"Epoch {epoch+1}, {percentage:.1f}%: {val_loss:.4f}\n")
 
                 model.train()
 
         # Compute average training loss for the epoch
-        train_loss /= train_samples or 1
+        if train_samples == 0:
+            print(f"Error: No valid training samples in epoch {epoch+1}")
+            break
+        train_loss /= train_samples
         train_losses.append(train_loss)
 
         # Epoch-level validation phase
@@ -98,7 +133,7 @@ def train_model(
         val_samples = 0
 
         with torch.no_grad():
-            for batch in val_loader:
+            for batch_idx, batch in enumerate(val_loader):
                 if batch is None:
                     continue
                 inputs, targets, _ = batch
@@ -108,28 +143,58 @@ def train_model(
                 outputs = model(inputs).predicted_depth
                 loss = criterion(outputs, targets)
 
+                if torch.isnan(loss) or torch.isinf(loss):
+                    print(
+                        f"Warning: Invalid epoch-level validation loss at batch {batch_idx+1}: {loss.item()}"
+                    )
+                    continue
+
                 val_loss += loss.item() * inputs.size(0)
                 val_samples += inputs.size(0)
 
-        val_loss /= val_samples or 1
+        if val_samples == 0:
+            print(f"Error: No valid validation samples for epoch {epoch+1}")
+            break
+
+        val_loss /= val_samples
         val_losses.append(val_loss)
 
         print(f"Train Loss: {train_loss:.4f}, Epoch Validation Loss: {val_loss:.4f}")
 
         # Save the best model based on epoch-level validation loss
-        if val_loss < best_val_loss:
+        if val_loss < best_val_loss and not (
+            torch.isnan(val_loss) or torch.isinf(val_loss)
+        ):
             best_val_loss = val_loss
             best_epoch = epoch + 1
-            torch.save(model.state_dict(), os.path.join(results_dir, "best_model.pth"))
-            print(
-                f"New best model saved at epoch {epoch+1} with epoch validation loss: {val_loss:.4f}"
-            )
+            try:
+                torch.save(
+                    model.state_dict(), os.path.join(results_dir, "best_model.pth")
+                )
+                model_saved = True
+                print(
+                    f"New best model saved at epoch {epoch+1} with epoch validation loss: {val_loss:.4f}"
+                )
+            except Exception as e:
+                print(f"Error saving model: {e}")
+
+    if not model_saved:
+        print("Warning: No model was saved during training. Saving final model state.")
+        try:
+            torch.save(model.state_dict(), os.path.join(results_dir, "final_model.pth"))
+        except Exception as e:
+            print(f"Error saving final model: {e}")
+        return model
 
     print(
         f"\nBest model was from epoch {best_epoch} with epoch validation loss: {best_val_loss:.4f}"
     )
 
     # Load the best model
-    model.load_state_dict(torch.load(os.path.join(results_dir, "best_model.pth")))
+    try:
+        model.load_state_dict(torch.load(os.path.join(results_dir, "best_model.pth")))
+    except FileNotFoundError:
+        print("Error: best_model.pth not found. Loading final model instead.")
+        model.load_state_dict(torch.load(os.path.join(results_dir, "final_model.pth")))
 
     return model

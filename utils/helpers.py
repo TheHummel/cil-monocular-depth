@@ -1,7 +1,10 @@
 import os
+import sys
+
 import torch
 from transformers import AutoModelForDepthEstimation
 
+from tqdm import tqdm
 from dotenv import load_dotenv
 
 from config import DEVICE
@@ -18,6 +21,10 @@ def custom_collate_fn(batch):
     if len(batch) == 0:
         return None
     return torch.utils.data.dataloader.default_collate(batch)
+
+
+def print_tqdm(message):
+    tqdm.write(message, file=sys.stderr)
 
 
 def load_model_from_hf(model_name, device=DEVICE):
