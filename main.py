@@ -156,7 +156,7 @@ def main():
 
     # Define loss and optimizer
     criterion = SiLogLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=5e-4, weight_decay=WEIGHT_DECAY)
+    optimizer = optim.AdamW(model.parameters(), lr=1e-5, weight_decay=WEIGHT_DECAY)
 
     # Finetune model
     print("Starting finetuning...")

@@ -1,0 +1,7 @@
+MAE: 0.3555
+RMSE: 0.5542
+siRMSE: 0.1445
+REL: 0.1264
+Delta1: 0.8478
+Delta2: 0.9752
+Delta3: 0.9944
