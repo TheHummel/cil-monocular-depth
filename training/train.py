@@ -1,7 +1,7 @@
 import os
 import torch
+import torch.nn as nn
 from tqdm import tqdm
-import sys
 
 from utils.helpers import print_tqdm
 
@@ -54,6 +54,15 @@ def train_model(
 
             # Forward pass
             outputs = model(inputs).predicted_depth
+            if outputs.dim() == 3:
+                outputs = outputs.unsqueeze(1)
+            outputs = nn.functional.interpolate(
+                outputs,
+                size=targets.shape[-2:],
+                mode="bilinear",
+                align_corners=True,
+            )
+
             loss = criterion(outputs, targets)
 
             if torch.isnan(loss) or torch.isinf(loss):
@@ -80,7 +89,9 @@ def train_model(
                 val_samples = 0
 
                 with torch.no_grad():
-                    for val_batch_idx, val_batch in enumerate(val_loader):
+                    for val_batch_idx, val_batch in enumerate(
+                        tqdm(val_loader, desc="In-batch Validation")
+                    ):
                         if val_batch is None:
                             continue
                         val_inputs, val_targets, _ = val_batch
@@ -89,6 +100,15 @@ def train_model(
                         )
 
                         val_outputs = model(val_inputs).predicted_depth
+                        if val_outputs.dim() == 3:
+                            val_outputs = val_outputs.unsqueeze(1)
+                        val_outputs = nn.functional.interpolate(
+                            val_outputs,
+                            size=val_targets.shape[-2:],
+                            mode="bilinear",
+                            align_corners=True,
+                        )
+
                         val_loss_batch = criterion(val_outputs, val_targets)
 
                         if torch.isnan(val_loss_batch) or torch.isinf(val_loss_batch):
@@ -120,6 +140,8 @@ def train_model(
 
                 model.train()
 
+                # TODO: create checkpoints of the model
+
         # Compute average training loss for the epoch
         if train_samples == 0:
             print(f"Error: No valid training samples in epoch {epoch+1}")
@@ -129,11 +151,13 @@ def train_model(
 
         # Epoch-level validation phase
         model.eval()
-        val_loss = 0.0
+        val_loss = torch.tensor(0.0, device=device)
         val_samples = 0
 
         with torch.no_grad():
-            for batch_idx, batch in enumerate(val_loader):
+            for batch_idx, batch in enumerate(
+                tqdm(val_loader, desc="Epoch Validation")
+            ):
                 if batch is None:
                     continue
                 inputs, targets, _ = batch
@@ -141,6 +165,15 @@ def train_model(
 
                 # Forward pass
                 outputs = model(inputs).predicted_depth
+                if outputs.dim() == 3:
+                    outputs = outputs.unsqueeze(1)
+                outputs = nn.functional.interpolate(
+                    outputs,
+                    size=targets.shape[-2:],
+                    mode="bilinear",
+                    align_corners=True,
+                )
+
                 loss = criterion(outputs, targets)
 
                 if torch.isnan(loss) or torch.isinf(loss):
@@ -149,23 +182,25 @@ def train_model(
                     )
                     continue
 
-                val_loss += loss.item() * inputs.size(0)
+                val_loss += loss * inputs.size(0)
                 val_samples += inputs.size(0)
 
         if val_samples == 0:
             print(f"Error: No valid validation samples for epoch {epoch+1}")
             break
 
-        val_loss /= val_samples
-        val_losses.append(val_loss)
+        val_loss = val_loss / val_samples
+        val_losses.append(val_loss.item())
 
-        print(f"Train Loss: {train_loss:.4f}, Epoch Validation Loss: {val_loss:.4f}")
+        print(
+            f"Train Loss: {train_loss:.4f}, Epoch Validation Loss: {val_loss.item():.4f}"
+        )
 
         # Save the best model based on epoch-level validation loss
         if val_loss < best_val_loss and not (
             torch.isnan(val_loss) or torch.isinf(val_loss)
         ):
-            best_val_loss = val_loss
+            best_val_loss = val_loss.item()
             best_epoch = epoch + 1
             try:
                 torch.save(
@@ -173,7 +208,7 @@ def train_model(
                 )
                 model_saved = True
                 print(
-                    f"New best model saved at epoch {epoch+1} with epoch validation loss: {val_loss:.4f}"
+                    f"New best model saved at epoch {epoch+1} with epoch validation loss: {val_loss.item():.4f}"
                 )
             except Exception as e:
                 print(f"Error saving model: {e}")

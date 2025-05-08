@@ -34,9 +34,11 @@ def evaluate_model(model, val_loader, device):
                 target_shape = targets.shape
 
             # Forward pass
-            outputs = model(inputs)
+            outputs = model(inputs).predicted_depth
 
             # Resize outputs to match target dimensions
+            if outputs.dim() == 3:
+                outputs = outputs.unsqueeze(1)
             outputs = nn.functional.interpolate(
                 outputs,
                 size=targets.shape[-2:],  # Match height and width of targets
@@ -58,19 +60,20 @@ def evaluate_model(model, val_loader, device):
 
                 EPSILON = 1e-6
 
-                valid_target = target_np > EPSILON
-                if not np.any(valid_target):
+                # mask for valid pixels
+                valid_mask = target_np > EPSILON
+                if not np.any(valid_mask):
                     continue
 
-                target_valid = target_np[valid_target]
-                pred_valid = pred_np[valid_target]
+                target_valid = target_np[valid_mask]
+                pred_valid = pred_np[valid_mask]
+
+                pred_valid = pred_valid.flatten()
 
                 log_target = np.log(target_valid)
-
                 pred_valid = np.where(pred_valid > EPSILON, pred_valid, EPSILON)
                 log_pred = np.log(pred_valid)
 
-                # Calculate scale-invariant error
                 diff = log_pred - log_target
                 diff_mean = np.mean(diff)
 
@@ -93,7 +96,7 @@ def evaluate_model(model, val_loader, device):
                     # Convert tensors to numpy arrays
                     input_np = inputs[i].cpu().permute(1, 2, 0).numpy()
                     target_np = targets[i].cpu().squeeze().numpy()
-                    output_np = outputs[i].cpu().squeeze().numpy()
+                    output_np = outputs[i].cpu().numpy().squeeze(0)
 
                     # Normalize for visualization
                     input_np = (input_np - input_np.min()) / (
@@ -155,6 +158,8 @@ def evaluate_model(model, val_loader, device):
 
 def generate_test_predictions(model, test_loader, device):
     """Generate predictions for the test set without ground truth"""
+    """DONT CHANGE"""
+
     model.eval()
 
     # Ensure predictions directory exists
@@ -169,6 +174,8 @@ def generate_test_predictions(model, test_loader, device):
             outputs = model(inputs).predicted_depth
 
             # Resize outputs to match original input dimensions (426x560)
+            if outputs.dim() == 3:
+                outputs = outputs.unsqueeze(1)
             outputs = nn.functional.interpolate(
                 outputs,
                 size=(426, 560),  # Original input dimensions
