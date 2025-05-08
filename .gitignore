@@ -6,5 +6,6 @@
 *.out
 *.npy
 *.png
+*.pth
 
 .env
