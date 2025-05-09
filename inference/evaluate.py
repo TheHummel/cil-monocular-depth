@@ -5,11 +5,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-from config import results_dir, predictions_dir
 from utils.helpers import ensure_dir
 
 
-def evaluate_model(model, val_loader, device):
+def evaluate_model(model, val_loader, device, results_dir):
     """Evaluate the model and compute metrics on validation set"""
     model.eval()
 
@@ -156,7 +155,7 @@ def evaluate_model(model, val_loader, device):
     return metrics
 
 
-def generate_test_predictions(model, test_loader, device):
+def generate_test_predictions(model, test_loader, device, predictions_dir):
     """Generate predictions for the test set without ground truth"""
     """DONT CHANGE"""
 

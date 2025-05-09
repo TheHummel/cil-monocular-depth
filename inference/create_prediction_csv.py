@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 # Path definitions
 MODEL_DIR = "intel_dpt_large"
-model_output_dir = os.path.join("..", "output", MODEL_DIR)
+model_output_dir = os.path.join("..", "models", MODEL_DIR, "output")
 predictions_dir = os.path.join(model_output_dir, "predictions")
 output_csv = os.path.join(model_output_dir, "predictions.csv")
 

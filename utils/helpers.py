@@ -7,8 +7,6 @@ from transformers import AutoModelForDepthEstimation
 from tqdm import tqdm
 from dotenv import load_dotenv
 
-from config import DEVICE
-
 
 def ensure_dir(directory):
     if not os.path.exists(directory):
@@ -27,7 +25,7 @@ def print_tqdm(message):
     tqdm.write(message, file=sys.stderr)
 
 
-def load_model_from_hf(model_name, device=DEVICE):
+def load_model_from_hf(model_name, device):
     load_dotenv()
     hf_token = os.getenv("HF_TOKEN")
     if not hf_token:

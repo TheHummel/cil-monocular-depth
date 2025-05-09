@@ -13,7 +13,8 @@ from utils.helpers import (
 )
 from training.train import train_model
 from inference.evaluate import evaluate_model, generate_test_predictions
-from config import *
+from paths import *
+from models.intel_dpt_large.config import *
 
 
 class SiLogLoss(nn.Module):
@@ -156,7 +157,9 @@ def main():
 
     # Define loss and optimizer
     criterion = SiLogLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=1e-5, weight_decay=WEIGHT_DECAY)
+    optimizer = optim.AdamW(
+        model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY
+    )
 
     # Finetune model
     print("Starting finetuning...")
@@ -174,7 +177,7 @@ def main():
 
     # Evaluate model
     print("Evaluating model on validation set...")
-    metrics = evaluate_model(model, val_loader, DEVICE)
+    metrics = evaluate_model(model, val_loader, DEVICE, results_dir)
     print("\nValidation Metrics:")
     for name, value in metrics.items():
         print(f"{name}: {value:.4f}")
@@ -184,7 +187,7 @@ def main():
 
     # Generate test predictions
     print("Generating predictions for test set...")
-    generate_test_predictions(model, test_loader, DEVICE)
+    generate_test_predictions(model, test_loader, DEVICE, predictions_dir)
 
     print(f"Results saved to {results_dir}")
     print(f"All test depth map predictions saved to {predictions_dir}")

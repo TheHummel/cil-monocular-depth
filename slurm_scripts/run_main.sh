@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=not_that_deep
 #SBATCH --account=cil_jobs
-#SBATCH --output=../output/logs/%j.out
-#SBATCH --error=../output/logs/%j.err
+#SBATCH --output=../logs/%j.out
+#SBATCH --error=../logs/%j.err
 #SBATCH --time=02:00:00
 #SBATCH --partition=gpu
 #SBATCH --mem=16G
@@ -11,11 +11,15 @@
 
 set -e
 ROOT_DIR="../"
-MODEL_OUTPUT_DIR="intel_dpt_large"
-OUTPUT_DIR="${ROOT_DIR}/output/${MODEL_OUTPUT_DIR}"
-mkdir -p ${ROOT_DIR}/output/${MODEL_OUTPUT_DIR}/{predictions,results}
+MODEL_NAME="intel_dpt_large"
+MODEL_DIR="${ROOT_DIR}/models/${MODEL_NAME}"
+OUTPUT_DIR="${MODEL_DIR}/output"
+mkdir -p ${OUTPUT_DIR}/{predictions,results}
+
+export PYTHONPATH="${ROOT_DIR}:${PYTHONPATH}"
+
 module load cuda/12.6.0
 source ~/.bashrc
 conda activate /cluster/courses/cil/envs/monocular_depth/
 export OUTPUT_DIR
-python ${ROOT_DIR}/main.py
+python ${MODEL_DIR}/main.py

@@ -7,5 +7,6 @@
 *.npy
 *.png
 *.pth
+*.csv
 
 .env

@@ -16,7 +16,7 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 model_name="$1"
-path_predictions="../output/${model_name}/predictions.csv"
+path_predictions="../models/${model_name}/output/predictions.csv"
 
 echo "Submitting model ${model_name}"
 
