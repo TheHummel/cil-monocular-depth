@@ -136,12 +136,12 @@ def main():
     # Load pretrained model
     print("Loading pretrained model...")
     
-    model_name = "Intel/dpt-large"
+    model_name = "Intel/dpt-hybrid-midas"
     model = load_model_from_hf(model_name, device=DEVICE)
 
-    # Freeze backbone to save compute
-    # for param in model.backbone.parameters():
-    #     param.requires_grad = False
+    # Freeze embeddings backbone to save compute
+    for param in model.dpt.embeddings.backbone.parameters():
+        param.requires_grad = False
 
     for param in model.dpt.parameters():
         param.requires_grad = False

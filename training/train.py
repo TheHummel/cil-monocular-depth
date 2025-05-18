@@ -81,7 +81,8 @@ def train_model(
             batch_count += 1
 
             if in_epoch_validation and (
-                (batch_idx + 1) % val_interval == 0 or (batch_idx + 1) == total_batches
+                (batch_idx + 1) % val_interval == 0
+                and (total_batches - (batch_idx + 1)) > 5
             ):
                 # in-batch validation
                 model.eval()
