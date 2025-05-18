@@ -10,10 +10,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from PIL import Image
+from PIL import Image, ImageFilter
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from transformers import SegformerFeatureExtractor, SegformerForSemanticSegmentation
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = "/cluster/courses/cil/monocular_depth/data"
@@ -36,11 +35,8 @@ WEIGHT_DECAY = 1e-4
 NUM_EPOCHS = 1
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 INPUT_SIZE = (426, 560)
-NUM_WORKERS = 4
+NUM_WORKERS = 2
 PIN_MEMORY = True
-
-# fix random seed
-torch.manual_seed(2025)
 
 # ### Helper functions
 
@@ -82,11 +78,6 @@ class DepthDataset(Dataset):
                 # For test set without ground truth
                 self.file_list = [line.strip() for line in f if line.strip()]
 
-        self.featureExtractor = SegformerFeatureExtractor.from_pretrained("nvidia/segformer-b1-finetuned-ade-512-512")
-        self.segmentationModel = SegformerForSemanticSegmentation.from_pretrained("nvidia/segformer-b1-finetuned-ade-512-512")
-        for param in self.segmentationModel.parameters():
-            param.requires_grad = False
-
     def __len__(self):
         return len(self.file_pairs if self.has_gt else self.file_list)
 
@@ -97,7 +88,11 @@ class DepthDataset(Dataset):
 
             # Load RGB image
             rgb = Image.open(rgb_path).convert("RGB")
-            features = self.featureExtractor(images=rgb, return_tensors="pt")
+            
+            #grayscale = rgb.convert("L")
+            #grayscale = grayscale.filter(ImageFilter.SMOOTH)
+            #edges = grayscale.filter(ImageFilter.FIND_EDGES)
+            #edges = transforms.ToTensor()(edges)
 
             # Load depth map
             depth = np.load(depth_path).astype(np.float32)
@@ -113,12 +108,8 @@ class DepthDataset(Dataset):
                 # Add channel dimension if not done by transform
                 depth = depth.unsqueeze(0)
             
-            # augment input image with image segmentation labels
-            output = self.segmentationModel(**features)
-            logits = output.logits
-            segmentations = torch.nn.functional.interpolate(logits, size=INPUT_SIZE, mode="bicubic", align_corners=False)
-            segmentations = torch.argmax(segmentations, dim=1)
-            rgb = torch.cat([rgb, segmentations], dim=0)
+            ## augment input image with edge detection
+            #rgb = torch.cat([rgb, edges], dim=0)
 
             return (
                 rgb,
@@ -131,18 +122,18 @@ class DepthDataset(Dataset):
 
             # Load RGB image
             rgb = Image.open(rgb_path).convert("RGB")
-            features = self.featureExtractor(images=rgb, return_tensors="pt")
+            
+            #grayscale = rgb.convert("L")
+            #grayscale = grayscale.filter(ImageFilter.SMOOTH)
+            #edges = grayscale.filter(ImageFilter.FIND_EDGES)
+            #edges = transforms.ToTensor()(edges)
 
             # Apply transformations
             if self.transform:
                 rgb = self.transform(rgb)
             
-            # augment input image with image segmentation labels
-            output = self.segmentationModel(**features)
-            logits = output.logits
-            segmentations = torch.nn.functional.interpolate(logits, size=INPUT_SIZE, mode="bicubic", align_corners=False)
-            segmentations = torch.argmax(segmentations, dim=1)
-            rgb = torch.cat([rgb, segmentations], dim=0)
+            ## augment input image with edge detection
+            #rgb = torch.cat([rgb, edges], dim=0)
 
             return rgb, self.file_list[idx]  # No depth, just return the filename
 
@@ -165,14 +156,18 @@ class UNetBlock(nn.Module):
 
 
 class SimpleUNet(nn.Module):
-    def __init__(self):
+    def __init__(self, output_size):
         super(SimpleUNet, self).__init__()
+        
+        self.output_size = output_size
 
         # Encoder blocks
-        self.enc1 = UNetBlock(4, 64)
+        self.enc1 = UNetBlock(3, 64)
         self.enc2 = UNetBlock(64, 128)
+        self.enc3 = UNetBlock(128, 256)
 
         # Decoder blocks
+        self.dec3 = UNetBlock(256 + 128, 128)
         self.dec2 = UNetBlock(128 + 64, 64)
         self.dec1 = UNetBlock(64, 32)
 
@@ -183,14 +178,23 @@ class SimpleUNet(nn.Module):
         self.pool = nn.MaxPool2d(2)
                                         
     def forward(self, x):
-
+        
         # Encoder
         enc1 = self.enc1(x)
-        x = self.pool(enc1)
-
-        x = self.enc2(x)
+        x = self.pool(enc1) # (batch_size, 32, 192, 192)
+        
+        enc2 = self.enc2(x)
+        x = self.pool(enc2) # (batch_size, 64, 96, 96)
+        
+        x = self.enc3(x) # (batch_size, 128, 48, 48)
 
         # Decoder with skip connections
+        x = nn.functional.interpolate(
+            x, size=enc2.shape[2:], mode="bilinear", align_corners=True
+        )
+        x = torch.cat([x, enc2], dim=1)
+        x = self.dec3(x)
+
         x = nn.functional.interpolate(
             x, size=enc1.shape[2:], mode="bilinear", align_corners=True
         )
@@ -202,13 +206,19 @@ class SimpleUNet(nn.Module):
 
         # Output non-negative depth values
         x = torch.sigmoid(x) * 10
-
+        
+        x = nn.functional.interpolate(
+                x,
+                size=self.output_size,  
+                mode="bilinear",
+                align_corners=True,
+            )
         return x
 
 
 # # Training loop
 
-def shift_invariant_loss(pred, target):
+def scale_invariant_loss(pred, target):
     EPSILON = 1e-6 # small value added to log
     pred_flattened = pred.view(pred.shape[0], -1) # reshape to (batch_size, num_pixels)
     target_flattened = target.view(target.shape[0], -1) # reshape to (batch_size, num_pixels)
@@ -498,7 +508,7 @@ def main():
     print("Defining transforms...")
     train_transform = transforms.Compose(
         [
-            transforms.Resize(INPUT_SIZE),
+            transforms.Resize((384, 384)),
             transforms.ColorJitter(
                 brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
             ),  # Data augmentation
@@ -509,7 +519,7 @@ def main():
 
     test_transform = transforms.Compose(
         [
-            transforms.Resize(INPUT_SIZE),
+            transforms.Resize((384,384)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
@@ -588,7 +598,7 @@ def main():
         )
         print(f"Initially allocated: {torch.cuda.memory_allocated(0) / 1e9:.2f} GB")
 
-    model = SimpleUNet()
+    model = SimpleUNet(INPUT_SIZE)
     model = nn.DataParallel(model)
     model = model.to(DEVICE)
     print(f"Using device: {DEVICE}")
@@ -600,7 +610,7 @@ def main():
         )
 
     # Define loss function and optimizer
-    criterion = shift_invariant_loss
+    criterion = scale_invariant_loss
     optimizer = optim.AdamW(
         model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY
     )
