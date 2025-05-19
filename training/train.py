@@ -186,6 +186,14 @@ def train_model(
                 val_loss += loss * inputs.size(0)
                 val_samples += inputs.size(0)
 
+        print(f"Epoch {epoch+1} Validation Loss: {val_loss.item():.4f}")
+                
+        with open(
+                os.path.join(results_dir, "in_epoch_val_losses.txt"), "a"
+            ) as f:
+                f.write(f"Epoch {epoch+1}, Finished: {val_loss:.4f}\n")
+
+
         if val_samples == 0:
             print(f"Error: No valid validation samples for epoch {epoch+1}")
             break

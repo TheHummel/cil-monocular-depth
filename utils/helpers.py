@@ -35,6 +35,7 @@ def load_model_from_hf(model_name, device):
     model.to(device)
 
     print("Model loaded successfully!")
+    print("MODEL:")
     print(model)
 
     return model
