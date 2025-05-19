@@ -72,8 +72,13 @@ def train_model(
                 )
                 continue
 
-            # Backward pass and optimize
+            # Backward pass
             loss.backward()
+
+            # gradient clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
+            # Update weights
             optimizer.step()
 
             train_loss += loss.item() * inputs.size(0)
