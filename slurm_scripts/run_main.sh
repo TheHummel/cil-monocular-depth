@@ -11,7 +11,8 @@
 
 set -e
 ROOT_DIR="../"
-MODEL_NAME="intel_dpt_large"
+#MODEL_NAME="intel_dpt_large"
+MODEL_NAME="dpt_hybrid_midas"
 MODEL_DIR="${ROOT_DIR}/models/${MODEL_NAME}"
 OUTPUT_DIR="${MODEL_DIR}/output"
 mkdir -p ${OUTPUT_DIR}/{predictions,results}

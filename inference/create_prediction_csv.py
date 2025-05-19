@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 
 # Path definitions
-MODEL_DIR = "intel_dpt_large"
+MODEL_DIR = "dpt_hybrid_midas"
 model_output_dir = os.path.join("..", "models", MODEL_DIR, "output")
 predictions_dir = os.path.join(model_output_dir, "predictions")
 output_csv = os.path.join(model_output_dir, "predictions.csv")

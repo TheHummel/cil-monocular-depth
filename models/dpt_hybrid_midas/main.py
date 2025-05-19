@@ -12,29 +12,10 @@ from utils.helpers import (
     load_model_from_hf,
 )
 from training.train import train_model
+from training.loss import SILogLoss
 from inference.evaluate import evaluate_model, generate_test_predictions
 from paths import *
-from models.intel_dpt_large.config import *
-
-
-class SiLogLoss(nn.Module):
-    def __init__(self, lambd=0.5):
-        super().__init__()
-        self.lambd = lambd
-
-    def forward(self, pred, target):
-        valid_mask = (target > 1e-6).float()
-        pred = torch.clamp(pred, min=1e-6)
-        target = torch.clamp(target, min=1e-6)
-        diff_log = torch.log(pred) - torch.log(target)
-        diff_log = diff_log * valid_mask
-        count = torch.sum(valid_mask) + 1e-6
-        log_mean = torch.sum(diff_log) / count
-        squared_term = torch.sum(diff_log**2) / count
-        mean_term = log_mean**2
-        loss = torch.sqrt(squared_term + mean_term)
-        return loss
-
+from models.dpt_hybrid_midas.config import *
 
 def main():
     ensure_dir(results_dir)
@@ -155,10 +136,19 @@ def main():
         )
 
     # Define loss and optimizer
-    criterion = SiLogLoss()
+    criterion = SILogLoss()
     optimizer = optim.AdamW(
         model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY
     )
+
+    # Print config
+    print("CONFIG:")
+    print(f"Batch size: {BATCH_SIZE}")
+    print(f"Learning rate: {LEARNING_RATE}")
+    print(f"Weight decay: {WEIGHT_DECAY}")
+    print(f"Epochs: {NUM_EPOCHS}")
+    print(f"Input size: {INPUT_SIZE}")
+    print(f"Device: {DEVICE}")
 
     # Finetune model
     print("Starting finetuning...")
