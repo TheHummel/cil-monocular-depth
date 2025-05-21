@@ -17,7 +17,8 @@ from inference.evaluate import evaluate_model, generate_test_predictions
 from paths import *
 from models.dpt_hybrid_midas.config import *
 
-from models.dpt_hybrid_midas.modules.CustomDPTFeatureFusionLayer import CustomDPTFeatureFusionLayer
+from models.dpt_hybrid_midas.channel_attention.CustomFeatureFusionLayer import CustomFeatureFusionLayer
+from models.dpt_hybrid_midas.fscn.CustomFeatureFusionStage import CustomFeatureFusionStage
 
 def main():
     ensure_dir(results_dir)
@@ -122,9 +123,12 @@ def main():
     model_name = "Intel/dpt-hybrid-midas"
     model = load_model_from_hf(model_name, device=DEVICE)
 
-    # update skip connections with custom attention
-    for i in range(4):
-        model.neck.fusion_stage.layers[i] = CustomDPTFeatureFusionLayer(model.config)
+    # # update skip connections with custom attention
+    # for i in range(4):
+    #     model.neck.fusion_stage.layers[i] = CustomDPTFeatureFusionLayer(model.config)
+
+    # update skip connections with FSCN
+    model.neck.fusion_stage = CustomFeatureFusionStage(model.config)
 
     print("MODEL:")
     print(model)
