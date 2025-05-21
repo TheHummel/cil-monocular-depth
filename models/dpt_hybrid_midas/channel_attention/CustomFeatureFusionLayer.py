@@ -18,13 +18,13 @@ class ChannelAttentionModule(nn.Module):
         weights = self.mlp(avg).view(x.size(0), x.size(1), 1, 1)
         return x * weights
 
-class CustomDPTFeatureFusionLayer(DPTFeatureFusionLayer):
+class CustomFeatureFusionLayer(DPTFeatureFusionLayer):
     def __init__(self, config, align_corners=True):
         super().__init__(config, align_corners)
         self.attention = ChannelAttentionModule(in_channels=config.fusion_hidden_size)
 
     def forward(self, hidden_state, residual=None):
-        hidden_state = self.attention(hidden_state)  # Apply attention
+        hidden_state = self.attention(hidden_state)
         if residual is not None:
             if hidden_state.shape != residual.shape:
                 residual = nn.functional.interpolate(
