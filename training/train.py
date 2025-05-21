@@ -26,7 +26,7 @@ def train_model(
 
     # Calculate the number of batches for 10% of training if in_epoch_validation is enabled
     total_batches = len(train_loader)
-    val_freq = 10
+    val_freq = 5
     val_interval = (
         max(1, total_batches // val_freq) if in_epoch_validation else total_batches
     )
