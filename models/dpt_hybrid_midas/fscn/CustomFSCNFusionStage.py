@@ -64,7 +64,7 @@ class CustomFeatureFusionLayer(DPTFeatureFusionLayer):
         hidden_state = self.projection(hidden_state)
         return hidden_state
 
-class CustomFeatureFusionStage(DPTFeatureFusionStage):
+class CustomFSCNFusionStage(DPTFeatureFusionStage):
     def __init__(self, config):
         super().__init__(config)
         self.layers = nn.ModuleList([CustomFeatureFusionLayer(config) for _ in range(4)])

@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from transformers.models.dpt.modeling_dpt import DPTFeatureFusionLayer, DPTFeatureFusionStage, DPTForDepthEstimation
 
-
 class ChannelAttentionModule(nn.Module):  # acts like the SENet
     def __init__(self, in_channels, reduction=16):
         super().__init__()
@@ -24,10 +23,8 @@ class AdaptiveConcatenationModule(nn.Module):
         super().__init__()
         self.num_stages = num_stages
         self.weights = nn.Parameter(torch.ones(num_stages) / num_stages)
-        
         total_in_channels = in_channels * (num_stages + 1)
         self.channel_attention = ChannelAttentionModule(total_in_channels)
-
         self.conv = nn.Conv2d(in_channels * (num_stages + 1), in_channels, kernel_size=1)
 
     def forward(self, decoder_feature, encoder_features):
@@ -46,29 +43,40 @@ class AdaptiveConcatenationModule(nn.Module):
         fused_features = self.channel_attention(concat_features)
         return nn.ReLU()(self.conv(fused_features))
 
-# New: Transformer-based Skip Connection Module (TSCN)
 class TransformerSkipConnectionModule(nn.Module):
-    def __init__(self, in_channels, num_stages, num_heads=8, num_layers=2):
+    def __init__(self, in_channels, num_stages, num_heads=4, num_layers=2, downsample_factor=1):
         super().__init__()
         self.num_stages = num_stages
+        self.downsample_factor = downsample_factor
         
         self.total_features = num_stages + 1
         
+        # projection to transformer dimension
         self.to_tokens = nn.Conv2d(in_channels, in_channels, kernel_size=1)
         
+        # Transformer encoder for self-attention across feature maps
         self.transformer = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(
                 d_model=in_channels,
                 nhead=num_heads,
                 dim_feedforward=in_channels * 4,
-                dropout=0.1
+                dropout=0.1,
+                batch_first=True
             ),
             num_layers=num_layers
         )
-        # Projection back to feature map
+        
+        # projection back to feature map
         self.to_feature = nn.Conv2d(in_channels * self.total_features, in_channels, kernel_size=1)
 
     def forward(self, decoder_feature, encoder_features):
+        if self.downsample_factor > 1:
+            decoder_feature = nn.functional.avg_pool2d(decoder_feature, kernel_size=self.downsample_factor)
+            encoder_features = [
+                nn.functional.avg_pool2d(feature, kernel_size=self.downsample_factor)
+                for feature in encoder_features
+            ]
+        
         # upsample encoder features to match decoder feature resolution
         upsampled_features = []
         for feature in encoder_features:
@@ -81,23 +89,29 @@ class TransformerSkipConnectionModule(nn.Module):
         all_features = upsampled_features + [decoder_feature]
         batch_size, C, H, W = all_features[0].shape
         
-        # project and flatten features
-        tokens = torch.stack([self.to_tokens(f).flatten(2).permute(2, 0, 1) for f in all_features], dim=0)
-        tokens = tokens.view(self.total_features * H * W, batch_size, C)
+        # project and flatten features to tokens
+        tokens = torch.stack([self.to_tokens(f).flatten(2).permute(0, 2, 1) for f in all_features], dim=1)
+        tokens = tokens.view(batch_size, self.total_features * H * W, C)
         
         transformed = self.transformer(tokens)
         
-        transformed = transformed.view(self.total_features, H * W, batch_size, C).permute(2, 3, 0, 1)
+        transformed = transformed.view(batch_size, self.total_features, H * W, C).permute(0, 3, 1, 2)
         transformed = transformed.reshape(batch_size, C * self.total_features, H, W)
         
         fused_feature = self.to_feature(transformed)
+        
+        if self.downsample_factor > 1:
+            fused_feature = nn.functional.interpolate(
+                fused_feature, scale_factor=self.downsample_factor, mode="bilinear", align_corners=False
+            )
+        
         return fused_feature
 
 class CustomFeatureFusionLayer(DPTFeatureFusionLayer):
     def __init__(self, config, align_corners=True):
         super().__init__(config, align_corners)
         self.tscn = TransformerSkipConnectionModule(
-            in_channels=config.fusion_hidden_size, num_stages=4
+            in_channels=config.fusion_hidden_size, num_stages=4, downsample_factor=1
         )
 
     def forward(self, hidden_state, encoder_features):
@@ -111,7 +125,7 @@ class CustomFeatureFusionLayer(DPTFeatureFusionLayer):
         hidden_state = self.projection(hidden_state)
         return hidden_state
 
-class CustomFeatureFusionStage(DPTFeatureFusionStage):
+class CustomTSCNFusionStage(DPTFeatureFusionStage):
     def __init__(self, config):
         super().__init__(config)
         self.layers = nn.ModuleList([CustomFeatureFusionLayer(config) for _ in range(4)])

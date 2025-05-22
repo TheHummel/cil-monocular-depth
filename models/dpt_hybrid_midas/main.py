@@ -18,7 +18,8 @@ from paths import *
 from models.dpt_hybrid_midas.config import *
 
 from models.dpt_hybrid_midas.channel_attention.CustomFeatureFusionLayer import CustomFeatureFusionLayer
-from models.dpt_hybrid_midas.fscn.CustomFeatureFusionStage import CustomFeatureFusionStage
+from models.dpt_hybrid_midas.fscn.CustomFSCNFusionStage import CustomFSCNFusionStage
+from models.dpt_hybrid_midas.tscn.CustomTSCNFusionStage import CustomTSCNFusionStage
 
 def main():
     ensure_dir(results_dir)
@@ -128,7 +129,10 @@ def main():
     #     model.neck.fusion_stage.layers[i] = CustomDPTFeatureFusionLayer(model.config)
 
     # update skip connections with FSCN
-    model.neck.fusion_stage = CustomFeatureFusionStage(model.config)
+    model.neck.fusion_stage = CustomFSCNFusionStage(model.config)
+
+    # # update skip connections with TSCN
+    # model.neck.fusion_stage = CustomTSCNFusionStage(model.config)
 
     print("MODEL:")
     print(model)
@@ -137,7 +141,7 @@ def main():
     for param in model.dpt.embeddings.backbone.parameters():
         param.requires_grad = False
 
-    for param in model.dpt.parameters():
+    for param in model.dpt.encoder.parameters():
         param.requires_grad = False
 
     model = nn.DataParallel(model)
