@@ -128,20 +128,17 @@ def main():
     # for i in range(4):
     #     model.neck.fusion_stage.layers[i] = CustomDPTFeatureFusionLayer(model.config)
 
-    # update skip connections with FSCN
-    model.neck.fusion_stage = CustomFSCNFusionStage(model.config)
+    # # update skip connections with FSCN
+    #model.neck.fusion_stage = CustomFSCNFusionStage(model.config)
 
     # # update skip connections with TSCN
-    # model.neck.fusion_stage = CustomTSCNFusionStage(model.config)
+    model.neck.fusion_stage = CustomTSCNFusionStage(model.config)
 
     print("MODEL:")
     print(model)
 
     # Freeze embeddings backbone to save compute
-    for param in model.dpt.embeddings.backbone.parameters():
-        param.requires_grad = False
-
-    for param in model.dpt.encoder.parameters():
+    for param in model.dpt.parameters():
         param.requires_grad = False
 
     model = nn.DataParallel(model)
