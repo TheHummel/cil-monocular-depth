@@ -3,7 +3,7 @@
 #SBATCH --account=cil_jobs
 #SBATCH --output=../logs/%j.out
 #SBATCH --error=../logs/%j.err
-#SBATCH --time=05:00:00
+#SBATCH --time=16:00:00
 #SBATCH --partition=gpu
 #SBATCH --mem=16G
 #SBATCH --ntasks=1

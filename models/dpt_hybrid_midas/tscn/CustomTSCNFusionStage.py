@@ -111,7 +111,7 @@ class CustomFeatureFusionLayer(DPTFeatureFusionLayer):
     def __init__(self, config, align_corners=True):
         super().__init__(config, align_corners)
         self.tscn = TransformerSkipConnectionModule(
-            in_channels=config.fusion_hidden_size, num_stages=4, downsample_factor=1
+            in_channels=config.fusion_hidden_size, num_stages=4, downsample_factor=2
         )
 
     def forward(self, hidden_state, encoder_features):
