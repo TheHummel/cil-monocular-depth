@@ -17,6 +17,10 @@ from inference.evaluate import evaluate_model, generate_test_predictions
 from paths import *
 from models.dpt_hybrid_midas.config import *
 
+from models.dpt_hybrid_midas.channel_attention.CustomFeatureFusionLayer import CustomFeatureFusionLayer
+from models.dpt_hybrid_midas.fscn.CustomFSCNFusionStage import CustomFSCNFusionStage
+from models.dpt_hybrid_midas.tscn.CustomTSCNFusionStage import CustomTSCNFusionStage
+
 def main():
     ensure_dir(results_dir)
     ensure_dir(predictions_dir)
@@ -120,10 +124,20 @@ def main():
     model_name = "Intel/dpt-hybrid-midas"
     model = load_model_from_hf(model_name, device=DEVICE)
 
-    # Freeze embeddings backbone to save compute
-    for param in model.dpt.embeddings.backbone.parameters():
-        param.requires_grad = False
+    # # update skip connections with custom attention
+    # for i in range(4):
+    #     model.neck.fusion_stage.layers[i] = CustomDPTFeatureFusionLayer(model.config)
 
+    # # update skip connections with FSCN
+    model.neck.fusion_stage = CustomFSCNFusionStage(model.config)
+
+    # # update skip connections with TSCN
+    #model.neck.fusion_stage = CustomTSCNFusionStage(model.config)
+
+    print("MODEL:")
+    print(model)
+
+    # Freeze embeddings backbone to save compute
     for param in model.dpt.parameters():
         param.requires_grad = False
 
