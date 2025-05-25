@@ -48,15 +48,22 @@ class AdaptiveConcatenationModule(nn.Module):
         self.channel_attention = ChannelAttentionModule(total_in_channels)
         self.spatial_attention = SpatialAttentionModule()
 
-        self.conv = nn.Conv2d(in_channels * (num_stages + 1), in_channels, kernel_size=1)
+        self.intermediate_conv = nn.Sequential(
+            nn.Conv2d(total_in_channels, 512, kernel_size=3, padding=2, dilation=2),
+            nn.ReLU()
+        )
+        
+        self.conv = nn.Conv2d(512, in_channels, kernel_size=1)
 
     def forward(self, decoder_feature, encoder_features):
         # upsample to match decoder feature resolution
         upsampled_features = []
         for feature in encoder_features:
             feature = nn.functional.interpolate(
-                feature, size=decoder_feature.shape[2:], mode="bilinear", align_corners=False
+                feature, size=decoder_feature.shape[2:], mode="bicubic", align_corners=False
             )
+            spatial_weight = self.spatial_attention(feature)
+            feature = feature * spatial_weight
             upsampled_features.append(feature)
         
         concat_features = torch.cat(upsampled_features + [decoder_feature], dim=1)
@@ -72,6 +79,8 @@ class AdaptiveConcatenationModule(nn.Module):
         spatial_weights = self.spatial_attention(channel_features)
         fused_features = channel_features * spatial_weights
         fused_features = channel_features + fused_features
+        
+        fused_features = self.intermediate_conv(fused_features)
         return nn.ReLU()(self.conv(fused_features))
 
 class CustomFeatureFusionLayer(DPTFeatureFusionLayer):
