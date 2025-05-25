@@ -129,10 +129,10 @@ def main():
     #     model.neck.fusion_stage.layers[i] = CustomDPTFeatureFusionLayer(model.config)
 
     # # update skip connections with FSCN
-    #model.neck.fusion_stage = CustomFSCNFusionStage(model.config)
+    model.neck.fusion_stage = CustomFSCNFusionStage(model.config)
 
     # # update skip connections with TSCN
-    model.neck.fusion_stage = CustomTSCNFusionStage(model.config)
+    #model.neck.fusion_stage = CustomTSCNFusionStage(model.config)
 
     print("MODEL:")
     print(model)

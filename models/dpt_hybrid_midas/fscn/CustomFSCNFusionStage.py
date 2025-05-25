@@ -7,6 +7,7 @@ class ChannelAttentionModule(nn.Module):  # acts like the SENet
     def __init__(self, in_channels, reduction=16):
         super().__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
         self.mlp = nn.Sequential(
             nn.Linear(in_channels, in_channels // reduction),
             nn.ReLU(),
@@ -16,8 +17,23 @@ class ChannelAttentionModule(nn.Module):  # acts like the SENet
 
     def forward(self, x):
         avg = self.avg_pool(x).view(x.size(0), -1)
-        weights = self.mlp(avg).view(x.size(0), x.size(1), 1, 1)
+        max_out = self.max_pool(x).view(x.size(0), -1)
+        weights = self.mlp(avg) + self.mlp(max_out)
+        weights = weights.view(x.size(0), x.size(1), 1, 1)
         return x * weights
+
+class SpatialAttentionModule(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv = nn.Conv2d(2, 1, kernel_size=7, padding=3, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        avg_out = torch.mean(x, dim=1, keepdim=True)
+        max_out, _ = torch.max(x, dim=1, keepdim=True)
+        x = torch.cat([avg_out, max_out], dim=1)
+        x = self.conv(x)
+        return self.sigmoid(x)
 
 class AdaptiveConcatenationModule(nn.Module):
     def __init__(self, in_channels, num_stages):
@@ -27,6 +43,7 @@ class AdaptiveConcatenationModule(nn.Module):
 
         total_in_channels = in_channels * (num_stages + 1)
         self.channel_attention = ChannelAttentionModule(total_in_channels)
+        self.spatial_attention = SpatialAttentionModule()
 
         self.conv = nn.Conv2d(in_channels * (num_stages + 1), in_channels, kernel_size=1)
 
@@ -43,7 +60,12 @@ class AdaptiveConcatenationModule(nn.Module):
         weighted_features = [w * f for w, f in zip(weights, upsampled_features)]
         concat_features = torch.cat(weighted_features + [decoder_feature], dim=1)
         
-        fused_features = self.channel_attention(concat_features)
+        # CBAM-like attention
+        channel_features = self.channel_attention(concat_features)
+        channel_features = concat_features + channel_features
+        spatial_weights = self.spatial_attention(channel_features)
+        fused_features = channel_features * spatial_weights
+        fused_features = channel_features + fused_features
         return nn.ReLU()(self.conv(fused_features))
 
 class CustomFeatureFusionLayer(DPTFeatureFusionLayer):
