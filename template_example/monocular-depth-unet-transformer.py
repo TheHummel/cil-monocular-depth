@@ -13,7 +13,6 @@ from torchvision import transforms
 from PIL import Image, ImageFilter
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from transformers import DPTForDepthEstimation
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 data_dir = "/cluster/courses/cil/monocular_depth/data"
@@ -33,7 +32,7 @@ print(f"output_dir: {output_dir}")
 BATCH_SIZE = 4
 LEARNING_RATE = 1e-4
 WEIGHT_DECAY = 1e-4
-NUM_EPOCHS = 20
+NUM_EPOCHS = 40
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 INPUT_SIZE = (426, 560)
 NUM_WORKERS = 2
@@ -156,116 +155,79 @@ class UNetBlock(nn.Module):
         return x
 
 
-class FusionBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(FusionBlock, self).__init__()
-        self.b = UNetBlock(in_channels, out_channels)
-
-    def forward(self, midas_feature, unet_feature):
-        midas_feature = nn.functional.interpolate(
-            midas_feature, size=unet_feature.shape[2:], mode="bilinear", align_corners=True
-        )
-        out = torch.cat([unet_feature, midas_feature], dim=1)
-        out = self.b(out)
-        return unet_feature + out 
-
-class EnhancedUNet(nn.Module):
+class SimpleUNet(nn.Module):
     def __init__(self, output_size):
-        super(EnhancedUNet, self).__init__()
+        super(SimpleUNet, self).__init__()
         
         self.output_size = output_size
-        
-        # get pretrained encoder part of midas
-        self.midas = DPTForDepthEstimation.from_pretrained("Intel/dpt-swinv2-base-384")
-
-        # disable gradients
-        for param in self.midas.parameters():
-            param.requires_grad = False
 
         # Encoder blocks
         self.enc1 = UNetBlock(3, 32)
         self.enc2 = UNetBlock(32, 64)
         self.enc3 = UNetBlock(64, 128)
         self.enc4 = UNetBlock(128, 256)
+
         # Decoder blocks
-        self.dec4 = UNetBlock(256 + 128, 128)
-        self.dec3 = UNetBlock(128 + 64, 64)
-        self.dec2 = UNetBlock(64 + 32, 32)
-        self.dec1 = UNetBlock(32, 32)
-        
-        # fusion block
-        self.f1 = FusionBlock(256 + 128, 256)
-        self.f2 = FusionBlock(128 + 128, 128)
-        self.f3 = FusionBlock(64 + 128, 64)
-        self.f4 = FusionBlock(32 + 128, 32)
+        self.dec4 = UNetBlock(256*2, 128)
+        self.dec3 = UNetBlock(128*2, 64)
+        self.dec2 = UNetBlock(64*2, 32)
+        self.dec1 = UNetBlock(32*2, 32)
 
         # Final layer
         self.final = nn.Conv2d(32, 1, kernel_size=1)
 
         # Pooling and upsampling
         self.pool = nn.MaxPool2d(2)
-                                        
-        self.midas_feature_proj1 = nn.Conv2d(128, 128, kernel_size=1, padding=0)
-        self.midas_feature_proj2 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
-        self.midas_feature_proj3 = nn.Conv2d(512, 128, kernel_size=1, padding=0)
-        self.midas_feature_proj4 = nn.Conv2d(1024, 128, kernel_size=1, padding=0)
-    
-
-    def forward(self, x):
-        # compute features from midas encoder
-        with torch.no_grad():
-            # return list of 4 tensors of shapes:
-            #   (batch_size, 128, 96, 96)
-            #   (batch_size, 256, 48, 48)
-            #   (batch_size, 512, 24, 24)
-            #   (batch_size, 1024, 12, 12)
-    
-            midas_features = self.midas.backbone(x).feature_maps
         
-        # project the 4 midas encoder fetures to lower channel dimension
-        mf1 = self.midas_feature_proj1(midas_features[0])
-        mf2 = self.midas_feature_proj2(midas_features[1])
-        mf3 = self.midas_feature_proj3(midas_features[2])
-        mf4 = self.midas_feature_proj4(midas_features[3])
-
-        # UNet  Encoder
+        self.transformer_layer = nn.TransformerEncoderLayer(d_model=256, nhead=8, batch_first=True)
+        self.transformer = nn.TransformerEncoder(self.transformer_layer, num_layers=3)
+ 
+    def forward(self, x):
+        
+        # Encoder
         enc1 = self.enc1(x)
-        x = self.pool(enc1) # (batch_size, 32, 192, 192)
+        x = self.pool(enc1) 
         
         enc2 = self.enc2(x)
-        x = self.pool(enc2) # (batch_size, 64, 96, 96)
+        x = self.pool(enc2) 
         
         enc3 = self.enc3(x) 
-        x = self.pool(enc3) # (batch_size, 128, 48, 48)
+        x  = self.pool(enc3)
 
-        enc4 = self.enc4(x) # (batch_size, 256, 48, 48)
-        
-        # fuse unet feature  with midas feature
-        x = self.f1(mf4, enc4) # output shape (batch_size, 256, 48, 48)
+        enc4 = self.enc4(x)
+        pooled = self.pool(enc4)
+
+        x = torch.flatten(pooled, start_dim=2)
+        x = x.permute(0, 2, 1) # reshape to (batch_size, num_pixels, num_channels)
+
+        x = self.transformer(x)
+        x = x.permute(0, 2, 1).reshape(pooled.shape) # reshape back
 
         # Decoder with skip connections
+        x = nn.functional.interpolate(
+                x, size=enc4.shape[2:], mode="bilinear", align_corners=True
+            )
+        x = torch.cat([x, enc4], dim=1)
+        x = self.dec4(x)
+
         x = nn.functional.interpolate(
             x, size=enc3.shape[2:], mode="bilinear", align_corners=True
         )
         x = torch.cat([x, enc3], dim=1)
-        x = self.dec4(x)
-        
-        x = self.f2(mf3, x)
+        x = self.dec3(x)
+
         x = nn.functional.interpolate(
             x, size=enc2.shape[2:], mode="bilinear", align_corners=True
         )
         x = torch.cat([x, enc2], dim=1)
-        x = self.dec3(x)
+        x = self.dec2(x)
 
-        x = self.f3(mf2, x)
         x = nn.functional.interpolate(
             x, size=enc1.shape[2:], mode="bilinear", align_corners=True
         )
         x = torch.cat([x, enc1], dim=1)
-        x = self.dec2(x)
-        
-        x = self.f4(mf1, x)
         x = self.dec1(x)
+
         x = self.final(x)
 
         # Output non-negative depth values
@@ -661,8 +623,8 @@ def main():
             f"Total GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB"
         )
         print(f"Initially allocated: {torch.cuda.memory_allocated(0) / 1e9:.2f} GB")
-     
-    model = EnhancedUNet(INPUT_SIZE)
+
+    model = SimpleUNet(INPUT_SIZE)
     model = nn.DataParallel(model)
     model = model.to(DEVICE)
     print(f"Using device: {DEVICE}")

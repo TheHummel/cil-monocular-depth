@@ -32,7 +32,7 @@ print(f"output_dir: {output_dir}")
 BATCH_SIZE = 4
 LEARNING_RATE = 1e-4
 WEIGHT_DECAY = 1e-4
-NUM_EPOCHS = 1
+NUM_EPOCHS = 20
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 INPUT_SIZE = (426, 560)
 NUM_WORKERS = 2
@@ -162,14 +162,16 @@ class SimpleUNet(nn.Module):
         self.output_size = output_size
 
         # Encoder blocks
-        self.enc1 = UNetBlock(3, 64)
-        self.enc2 = UNetBlock(64, 128)
-        self.enc3 = UNetBlock(128, 256)
+        self.enc1 = UNetBlock(3, 32)
+        self.enc2 = UNetBlock(32, 64)
+        self.enc3 = UNetBlock(64, 128)
+        self.enc4 = UNetBlock(128, 256)
 
         # Decoder blocks
-        self.dec3 = UNetBlock(256 + 128, 128)
-        self.dec2 = UNetBlock(128 + 64, 64)
-        self.dec1 = UNetBlock(64, 32)
+        self.dec4 = UNetBlock(256 + 128, 128)
+        self.dec3 = UNetBlock(128 + 64, 64)
+        self.dec2 = UNetBlock(64 + 32, 32)
+        self.dec1 = UNetBlock(32, 32)
 
         # Final layer
         self.final = nn.Conv2d(32, 1, kernel_size=1)
@@ -181,14 +183,23 @@ class SimpleUNet(nn.Module):
         
         # Encoder
         enc1 = self.enc1(x)
-        x = self.pool(enc1) # (batch_size, 32, 192, 192)
+        x = self.pool(enc1) 
         
         enc2 = self.enc2(x)
-        x = self.pool(enc2) # (batch_size, 64, 96, 96)
+        x = self.pool(enc2) 
         
-        x = self.enc3(x) # (batch_size, 128, 48, 48)
+        enc3 = self.enc3(x) 
+        x  = self.pool(enc3)
+
+        x = self.enc4(x)
 
         # Decoder with skip connections
+        x = nn.functional.interpolate(
+            x, size=enc3.shape[2:], mode="bilinear", align_corners=True
+        )
+        x = torch.cat([x, enc3], dim=1)
+        x = self.dec4(x)
+
         x = nn.functional.interpolate(
             x, size=enc2.shape[2:], mode="bilinear", align_corners=True
         )
