@@ -39,9 +39,12 @@ class AdaptiveConcatenationModule(nn.Module):
     def __init__(self, in_channels, num_stages):
         super().__init__()
         self.num_stages = num_stages
-        self.weights = nn.Parameter(torch.ones(num_stages) / num_stages)
-
         total_in_channels = in_channels * (num_stages + 1)
+
+        self.adaptive_weights = nn.Sequential(
+            nn.Conv2d(total_in_channels, num_stages, kernel_size=1, bias=False),
+            nn.Sigmoid()
+        )
         self.channel_attention = ChannelAttentionModule(total_in_channels)
         self.spatial_attention = SpatialAttentionModule()
 
@@ -56,7 +59,10 @@ class AdaptiveConcatenationModule(nn.Module):
             )
             upsampled_features.append(feature)
         
-        weights = torch.softmax(self.weights, dim=0)
+        concat_features = torch.cat(upsampled_features + [decoder_feature], dim=1)
+        weights = self.adaptive_weights(concat_features)
+        weights = torch.softmax(weights, dim=1)
+        weights = weights.split(1, dim=1)
         weighted_features = [w * f for w, f in zip(weights, upsampled_features)]
         concat_features = torch.cat(weighted_features + [decoder_feature], dim=1)
         
