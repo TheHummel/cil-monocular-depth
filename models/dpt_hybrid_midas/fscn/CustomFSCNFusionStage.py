@@ -52,6 +52,14 @@ class AdaptiveConcatenationModule(nn.Module):
             nn.Conv2d(total_in_channels, 512, kernel_size=3, padding=2, dilation=2),
             nn.ReLU()
         )
+
+        # residual layer for edge-preserving convolution
+        self.edge_preservation = nn.Conv2d(512, 512, kernel_size=3, padding=1, bias=False)
+        with torch.no_grad():
+            sobel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=torch.float32)
+            sobel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=torch.float32)
+            for i in range(512):
+                self.edge_preservation.weight[i, i, :, :] = sobel_x if i % 2 == 0 else sobel_y
         
         self.conv = nn.Conv2d(512, in_channels, kernel_size=1)
 
@@ -81,6 +89,9 @@ class AdaptiveConcatenationModule(nn.Module):
         fused_features = channel_features + fused_features
         
         fused_features = self.intermediate_conv(fused_features)
+
+        edge_features = self.edge_preservation(fused_features)
+
         return nn.ReLU()(self.conv(fused_features))
 
 class CustomFeatureFusionLayer(DPTFeatureFusionLayer):
