@@ -90,7 +90,7 @@ class AdaptiveConcatenationModule(nn.Module):
         
         fused_features = self.intermediate_conv(fused_features)
 
-        fused_features = self.edge_preservation(fused_features)
+        fused_features = fused_features + self.edge_preservation(fused_features)
 
         return nn.ReLU()(self.conv(fused_features))
 
