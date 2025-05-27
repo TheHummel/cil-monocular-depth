@@ -233,10 +233,8 @@ class AdaptiveConcatenationModule(nn.Module):
             spatial_weight = self.spatial_attention(feature)
             feature = feature * spatial_weight
             upsampled_features.append(feature)
-        print(len(upsampled_features))
-        print(upsampled_features[0].shape)
+
         concat_features = torch.cat(upsampled_features + [decoder_feature], dim=1)
-        print(concat_features.shape)
 
         weights = self.weight_predictor(concat_features)
         weights = torch.softmax(weights, dim=1)
@@ -244,7 +242,6 @@ class AdaptiveConcatenationModule(nn.Module):
         weights = weights.split(1, dim=1)
         weighted_features = [w * f for w, f in zip(weights, upsampled_features)]
         concat_features = torch.cat(weighted_features + [decoder_feature], dim=1)
-        print(concat_features.shape)
   
         channel_features = self.channel_attention(concat_features)
         channel_features = concat_features + channel_features
@@ -300,7 +297,7 @@ class EnhancedUNet(nn.Module):
         # Pooling and upsampling
         self.pool = nn.MaxPool2d(2)
 
-        # Adjusted: Adjust channel dimensions of DPT features to match U-Net stages
+        # Adjusted: reduce channel dimensions of DPT features 
         self.midas_feature_proj1 = nn.Conv2d(
             128, 128, kernel_size=1, padding=0
         )  # For dec1 (H/2)
