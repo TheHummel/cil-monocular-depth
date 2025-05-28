@@ -130,3 +130,86 @@ class CustomFSCNFusionStage(DPTFeatureFusionStage):
             fused_hidden_state = layer(fused_hidden_state, features)
             fused_hidden_states.append(fused_hidden_state)
         return fused_hidden_states
+
+class UnetAdaptiveConcatenationModule(nn.Module):
+    def __init__(self, encoder_channels, decoder_channels, num_stages, out_channels):
+        super().__init__()
+        self.num_stages = num_stages
+        total_in_channels = sum(encoder_channels) + decoder_channels
+        self.adaptive_weights = nn.Sequential(
+            nn.Conv2d(total_in_channels, num_stages, kernel_size=1, bias=False),
+            nn.Sigmoid()
+        )
+        self.channel_attention = ChannelAttentionModule(total_in_channels)
+        self.intermediate_conv = nn.Sequential(
+            nn.Conv2d(total_in_channels, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+        self.edge_preservation = nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=False)
+        with torch.no_grad():
+            sobel_x = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=torch.float32)
+            sobel_y = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=torch.float32)
+            for i in range(128):
+                self.edge_preservation.weight[i, i, :, :] = sobel_x if i % 2 == 0 else sobel_y
+        self.conv = nn.Conv2d(128, out_channels, kernel_size=1)
+
+    def forward(self, decoder_feature, encoder_features):
+        upsampled_features = []
+        for feature in encoder_features:
+            feature = nn.functional.interpolate(
+                feature, size=decoder_feature.shape[2:], mode="bilinear", align_corners=True
+            )
+            upsampled_features.append(feature)
+        concat_features = torch.cat(upsampled_features + [decoder_feature], dim=1)
+        weights = self.adaptive_weights(concat_features)
+        weights = torch.softmax(weights, dim=1)
+        weights = weights.split(1, dim=1)
+        weighted_features = [w * f for w, f in zip(weights, upsampled_features)]
+        concat_features = torch.cat(weighted_features + [decoder_feature], dim=1)
+        channel_features = self.channel_attention(concat_features)
+        channel_features = concat_features + channel_features
+        fused_features = self.intermediate_conv(channel_features)
+        fused_features = fused_features + self.edge_preservation(fused_features)
+        return nn.ReLU(inplace=True)(self.conv(fused_features))
+
+class UnetFeatureFusionLayer(nn.Module):
+    def __init__(self, encoder_channels, decoder_channels, num_stages, out_channels):
+        super().__init__()
+        self.acm = UnetAdaptiveConcatenationModule(
+            encoder_channels=encoder_channels,
+            decoder_channels=decoder_channels,
+            num_stages=num_stages,
+            out_channels=out_channels
+        )
+        self.residual_layer = nn.Sequential(
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, hidden_state, encoder_features):
+        hidden_state = self.acm(hidden_state, encoder_features)
+        hidden_state = self.residual_layer(hidden_state)
+        hidden_state = nn.functional.interpolate(
+            hidden_state, scale_factor=2, mode="bilinear", align_corners=True
+        )
+        return hidden_state
+
+class UnetFSCNFusionStage(nn.Module):
+    def __init__(self, encoder_channels, decoder_channels_list, out_channels_list):
+        super().__init__()
+        self.layers = nn.ModuleList([
+            UnetFeatureFusionLayer(
+                encoder_channels=encoder_channels,
+                decoder_channels=decoder_channels,
+                num_stages=len(encoder_channels),
+                out_channels=out_channels
+            )
+            for decoder_channels, out_channels in zip(decoder_channels_list, out_channels_list)
+        ])
+
+    def forward(self, features, encoder_features):
+        fused_hidden_states = []
+        for feature, layer in zip(features, self.layers):
+            fused_hidden_state = layer(feature, encoder_features)
+            fused_hidden_states.append(fused_hidden_state)
+        return fused_hidden_states
