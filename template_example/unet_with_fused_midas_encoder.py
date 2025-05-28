@@ -262,7 +262,7 @@ class EnhancedUNet(nn.Module):
         self.output_size = output_size
 
         # Get pretrained encoder part of DPT-MiDaS
-        self.midas = DPTForDepthEstimation.from_pretrained("Intel/dpt-swinv2-base-384")
+        self.midas = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas")
         for param in self.midas.parameters():
             param.requires_grad = False
 
@@ -297,30 +297,35 @@ class EnhancedUNet(nn.Module):
         # Pooling and upsampling
         self.pool = nn.MaxPool2d(2)
 
-        # Adjusted: reduce channel dimensions of DPT features 
-        self.midas_feature_proj1 = nn.Conv2d(
-            128, 128, kernel_size=1, padding=0
-        )  # For dec1 (H/2)
-        self.midas_feature_proj2 = nn.Conv2d(
-            256, 128, kernel_size=1, padding=0
-        )  # For dec2 (H/4)
-        self.midas_feature_proj3 = nn.Conv2d(
-            512, 128, kernel_size=1, padding=0
-        )  # For dec3 (H/8)
-        self.midas_feature_proj4 = nn.Conv2d(
-            1024, 128, kernel_size=1, padding=0
-        )  # For dec4 (H/16)
+        self.midas_feature_proj4 = nn.Conv2d(768, 128, kernel_size=3, stride=1, padding=1)
+        self.midas_feature_proj3 = nn.Conv2d(768, 128, kernel_size=3, stride=1, padding=1)
+        self.midas_feature_proj2 = nn.Conv2d(768, 128, kernel_size=3, stride=1, padding=1)
+        self.midas_feature_proj1 = nn.Conv2d(768, 128, kernel_size=3, stride=1, padding=1)
+
 
     def forward(self, x):
-        # Compute features from DPT encoder
+        # Compute features from dpt-hybrid-midas
         with torch.no_grad():
-            midas_features = self.midas.backbone(x).feature_maps
+            # take midas encoder features at different stages (from layers 3, 6, 9, 12)
+            # Note: hidden_states[0] is the input embedding
+            hidden_states = self.midas.dpt(x, output_hidden_states=True).hidden_states
+            hidden_states = [hidden_states[3], hidden_states[6], hidden_states[9], hidden_states[12]] # Tensors of shape (batch_size, 577, 768)
 
-        # Project the 4 DPT encoder features to lower channel dimension
-        mf1 = self.midas_feature_proj1(midas_features[0])  # [batch_size, 128, 96, 96]
-        mf2 = self.midas_feature_proj2(midas_features[1])  # [batch_size, 128, 48, 48]
-        mf3 = self.midas_feature_proj3(midas_features[2])  # [batch_size, 128, 24, 24]
-        mf4 = self.midas_feature_proj4(midas_features[3])  # [batch_size, 128, 12, 12]
+            midas_features = []
+            for hidden_state in hidden_states:
+                feature = hidden_state[:, 1:, :]
+                cls = hidden_state[:, 0, :]
+                cls = cls.view(-1, 1, cls.shape[1])
+                cls = cls.expand(-1, 576, -1)
+                feature = feature + cls
+                feature = feature.permute(0, 2, 1).reshape(x.shape[0], 768, 24, 24) # now has shape (batch_size, 768, 24, 24)
+                midas_features.append(feature) 
+
+        # Ppoject the 4 midas encoder features to lower channel dimension
+        mf1 = self.midas_feature_proj1(midas_features[0])
+        mf2 = self.midas_feature_proj2(midas_features[1])
+        mf3 = self.midas_feature_proj3(midas_features[2])
+        mf4 = self.midas_feature_proj4(midas_features[3])
 
         dpt_features = [mf1, mf2, mf3, mf4] 
 
