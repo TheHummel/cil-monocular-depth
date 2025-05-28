@@ -32,7 +32,7 @@ print(f"output_dir: {output_dir}")
 
 BATCH_SIZE = 4
 LEARNING_RATE = 1e-4
-WEIGHT_DECAY = 1e-4
+WEIGHT_DECAY = 1e-6
 NUM_EPOCHS = 20
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 INPUT_SIZE = (426, 560)
@@ -290,18 +290,23 @@ class EnhancedUNet(nn.Module):
 
 # # Training loop
 
-def scale_invariant_loss(pred, target):
-    EPSILON = 1e-6 # small value added to log
-    pred_flattened = pred.view(pred.shape[0], -1) # reshape to (batch_size, num_pixels)
-    target_flattened = target.view(target.shape[0], -1) # reshape to (batch_size, num_pixels)
-    N = target_flattened.shape[1] # Number of pixels in image
-    
-    pixel_diffs = torch.log(pred_flattened + EPSILON) - torch.log(target_flattened + EPSILON)
-    mean_diffs = torch.sum(pixel_diffs, dim=1) / N # Vector of size (batch_size) containing mean diff for each image
-    
-    per_image_siloss = torch.sqrt(torch.sum((pixel_diffs - mean_diffs[:, None])*(pixel_diffs - mean_diffs[:, None]), dim=1) / N)
+class SILogLoss(nn.Module):
+    def __init__(self, lambd=0.5):
+        super().__init__()
+        self.lambd = lambd
 
-    return torch.mean(per_image_siloss)
+    def forward(self, pred, target):
+        valid_mask = (target > 1e-6).float()
+        pred = torch.clamp(pred, min=1e-6)
+        target = torch.clamp(target, min=1e-6)
+        diff_log = torch.log(pred) - torch.log(target)
+        diff_log = diff_log * valid_mask
+        count = torch.sum(valid_mask) + 1e-6
+        log_mean = torch.sum(diff_log) / count
+        squared_term = torch.sum(diff_log**2) / count
+        mean_term = log_mean**2
+        loss = torch.sqrt(squared_term + mean_term)
+        return loss
 
 def train_model(
     model, train_loader, val_loader, criterion, optimizer, num_epochs, device
@@ -682,7 +687,7 @@ def main():
         )
 
     # Define loss function and optimizer
-    criterion = scale_invariant_loss
+    criterion = SILogLoss()
     optimizer = optim.AdamW(
         model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY
     )
