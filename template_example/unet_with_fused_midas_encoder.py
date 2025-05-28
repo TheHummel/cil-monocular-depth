@@ -32,7 +32,7 @@ print(f"output_dir: {output_dir}")
 
 BATCH_SIZE = 4
 LEARNING_RATE = 1e-4
-WEIGHT_DECAY = 1e-4
+WEIGHT_DECAY = 1e-6
 NUM_EPOCHS = 20
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 INPUT_SIZE = (426, 560)
