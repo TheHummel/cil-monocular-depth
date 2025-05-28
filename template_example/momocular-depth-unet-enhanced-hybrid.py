@@ -205,38 +205,29 @@ class EnhancedUNet(nn.Module):
         # Pooling
         self.pool = nn.MaxPool2d(2)
         
-        self.midas_feature_proj1 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
-        self.midas_feature_proj2 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
-        self.midas_feature_proj3 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
-        self.midas_feature_proj4 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
+        self.midas_feature_proj4 = nn.Conv2d(768, 128, kernel_size=3, stride=1, padding=1)
+        self.midas_feature_proj3 = nn.Conv2d(768, 128, kernel_size=3, stride=1, padding=1)
+        self.midas_feature_proj2 = nn.Conv2d(768, 128, kernel_size=3, stride=1, padding=1)
+        self.midas_feature_proj1 = nn.Conv2d(768, 128, kernel_size=3, stride=1, padding=1)
 
-        # projection for x4 to match convs[2] and convs[3] input
-        self.x4_proj = nn.Conv2d(1024, 768, kernel_size=1, padding=0)
 
     def forward(self, x):
         # Compute features from dpt-hybrid-midas
         with torch.no_grad():
-            bit_backbone = self.midas.dpt.embeddings.backbone.bit
-            x1 = bit_backbone.embedder(x)  # (batch_size, 64, 192, 192)
-            x2 = bit_backbone.encoder.stages[0](x1)  # (batch_size, 256, 96, 96)
-            x3 = bit_backbone.encoder.stages[1](x2)  # (batch_size, 512, 48, 48)
-            x4 = bit_backbone.encoder.stages[2](x3)  # (batch_size, 1024, 24, 24)
+            # take midas encoder features at different stages (from layers 3, 6, 9, 12)
+            # Note: hidden_states[0] is the input embedding
+            hidden_states = self.midas.dpt(x, output_hidden_states=True).hidden_states
+            hidden_states = [hidden_states[3], hidden_states[6], hidden_states[9], hidden_states[12]] # Tensors of shape (batch_size, 577, 768)
 
-            # project x4 to 768 channels and apply convs
-            x4_proj = self.x4_proj(x4)
-            midas_features = [
-                self.midas.neck.convs[0](x2),  # 256 -> 256, 96x96
-                self.midas.neck.convs[1](x3),  # 512 -> 256, 48x48
-                self.midas.neck.convs[2](x4_proj),  # 768 -> 256, 24x24
-                self.midas.neck.convs[3](x4_proj),  # 768 -> 256, 24x24
-            ]
-            print(f"Convs output shapes: {[f.shape for f in midas_features]}")
-
-            # resize last feature to 12x12
-            midas_features[3] = nn.functional.interpolate(
-                midas_features[3], size=(12, 12), mode="bilinear", align_corners=True
-            )
-            print(f"Final midas_features shapes: {[f.shape for f in midas_features]}")
+            midas_features = []
+            for hidden_state in hidden_states:
+                feature = hidden_state[:, 1:, :]
+                cls = hidden_state[:, 0, :]
+                cls = cls.view(-1, 1, cls.shape[1])
+                cls = cls.expand(-1, 576, -1)
+                feature = feature + cls
+                feature = feature.permute(0, 2, 1).reshape(x.shape[0], 768, 24, 24) # now has shape (batch_size, 768, 24, 24)
+                midas_features.append(feature) 
 
         # Ppoject the 4 midas encoder features to lower channel dimension
         mf1 = self.midas_feature_proj1(midas_features[0])
