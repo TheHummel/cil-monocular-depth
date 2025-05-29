@@ -192,11 +192,13 @@ def train_model(
                 val_samples += inputs.size(0)
 
         print(f"Epoch {epoch+1} Validation Loss: {val_loss.item():.4f}")
+
+        avg_val_loss = val_loss / val_samples if val_samples > 0 else val_loss
                 
         with open(
                 os.path.join(results_dir, "in_epoch_val_losses.txt"), "a"
             ) as f:
-                f.write(f"Epoch {epoch+1}, Finished: {val_loss:.4f}\n")
+                f.write(f"Epoch {epoch+1}, Finished: {avg_val_loss:.4f}\n")
 
 
         if val_samples == 0:
