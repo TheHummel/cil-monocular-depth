@@ -1,12 +1,14 @@
 # Monocular Depth Project for CIL, ETH Zurich (Spring 2025)
 
+For the following 5 models the provided example notebook on kaggle has been used as a base and we have mainly adjusted the model definition section as well as added a function for the scale-invariant RMSE loss.
+
 ## Baseline model 1: Basic UNet
 
-The basic Unet is a bigger version of the UNet given in the provided example on kaggle with 4 Encoder, Decoder blocks and can be found in --------.
+The basic Unet is a bigger version of the UNet given in the provided example on kaggle with 4 Encoder, Decoder blocks. The associated file can be found in --------.
 
 ## Baseline model 2: MiDaS Decoder Finetuned:
 
-This is the pre-trained model from huggingface for finetuning the decoder on the dataset from kaggle. The File to run it is located in --------.
+This is the pre-trained model from huggingface where we finetuned the decoder on the dataset. In our report we made use of both the MiDaS version with [ViT backbone](https://huggingface.co/Intel/dpt-hybrid-midas) and the [Swinv2 backbone](https://huggingface.co/Intel/dpt-swinv2-base-384). The File to train either option is located at --------.
 
 ## Baseline model 3: MiDaS with full skip connection network:
 
