@@ -31,8 +31,8 @@ print(f"output_dir: {output_dir}")
 # ### Hyperparameters
 
 BATCH_SIZE = 4
-LEARNING_RATE = 1e-4
-WEIGHT_DECAY = 1e-4
+LEARNING_RATE = 1e-5
+WEIGHT_DECAY = 1e-6
 NUM_EPOCHS = 20
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 INPUT_SIZE = (426, 560)
@@ -127,7 +127,7 @@ class DPT(nn.Module):
     def __init__(self, target_size):
         super(DPT, self).__init__()
         
-        self.midas_swinv2 = DPTForDepthEstimation.from_pretrained("Intel/dpt-swinv2-base-384")
+        self.midas = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas")
         self.target_size = target_size 
         
         for param in self.midas_swinv2.backbone.parameters():
@@ -135,11 +135,7 @@ class DPT(nn.Module):
         
 
     def forward(self, x):
-        with torch.no_grad():
-            x = self.midas_swinv2.backbone(x).feature_maps
-        
-        x = self.midas_swinv2.neck(x)
-        x = self.midas_swinv2.head(x).unsqueeze(1)
+        x = self.midas(x).predicted_depth.unsqueeze(1)
         
         # Decoder with skip connections
         x = nn.functional.interpolate(
@@ -148,20 +144,38 @@ class DPT(nn.Module):
         return x
 
 
-# # Training loop
+# # Loss Function
+class SILogLoss(nn.Module):
+    def __init__(self, lambd=0.5):
+        super().__init__()
+        self.lambd = lambd
 
-def scale_invariant_loss(pred, target):
-    EPSILON = 1e-6 # small value added to log
-    pred_flattened = pred.view(pred.shape[0], -1) # reshape to (batch_size, num_pixels)
-    target_flattened = target.view(target.shape[0], -1) # reshape to (batch_size, num_pixels)
-    N = target_flattened.shape[1] # Number of pixels in image
-    
-    pixel_diffs = torch.log(pred_flattened + EPSILON) - torch.log(target_flattened + EPSILON)
-    mean_diffs = torch.sum(pixel_diffs, dim=1) / N # Vector of size (batch_size) containing mean diff for each image
-    
-    per_image_siloss = torch.sqrt(torch.sum((pixel_diffs - mean_diffs[:, None])*(pixel_diffs - mean_diffs[:, None]), dim=1) / N)
+    def forward(self, pred, target):
+        pred = torch.clamp(pred, min=1e-6)
+        target = torch.clamp(target, min=1e-6)
 
-    return torch.mean(per_image_siloss)
+        valid_mask = (target > 1e-6).float()
+
+        diff_log = torch.log(pred) - torch.log(target)
+        diff_log = diff_log * valid_mask
+
+        batch_size = pred.shape[0]
+        diff_log_flat = diff_log.view(batch_size, -1)
+        valid_mask_flat = valid_mask.view(batch_size, -1)
+        count = torch.sum(valid_mask_flat, dim=1) + 1e-6
+
+        sum_diff_log = torch.sum(diff_log_flat, dim=1)
+        alpha = -1 * sum_diff_log / count
+
+        diff_log_with_alpha = diff_log_flat + alpha.unsqueeze(1)
+        diff_log_with_alpha = diff_log_with_alpha * valid_mask_flat
+
+        squared_term = torch.sum(diff_log_with_alpha**2, dim=1) / count
+        per_image_loss = torch.sqrt(squared_term)
+
+        loss = torch.mean(per_image_loss)
+
+        return loss
 
 def train_model(
     model, train_loader, val_loader, criterion, optimizer, num_epochs, device
@@ -536,7 +550,7 @@ def main():
         )
 
     # Define loss function and optimizer
-    criterion = scale_invariant_loss
+    criterion = SILogLoss()
     optimizer = optim.AdamW(
             filter(lambda p: p.requires_grad, model.parameters()), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY
     )
