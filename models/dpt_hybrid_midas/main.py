@@ -17,9 +17,9 @@ from inference.evaluate import evaluate_model, generate_test_predictions
 from paths import *
 from models.dpt_hybrid_midas.config import *
 
-from models.dpt_hybrid_midas.channel_attention.CustomFeatureFusionLayer import CustomFeatureFusionLayer
+#from models.dpt_hybrid_midas.channel_attention.CustomFeatureFusionLayer import CustomFeatureFusionLayer
 from models.dpt_hybrid_midas.fscn.CustomFSCNFusionStage import CustomFSCNFusionStage
-from models.dpt_hybrid_midas.tscn.CustomTSCNFusionStage import CustomTSCNFusionStage
+#from models.dpt_hybrid_midas.tscn.CustomTSCNFusionStage import CustomTSCNFusionStage
 
 def main():
     ensure_dir(results_dir)
