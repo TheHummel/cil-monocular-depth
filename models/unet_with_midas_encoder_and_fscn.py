@@ -46,8 +46,6 @@ INPUT_SIZE = (426, 560)
 NUM_WORKERS = 2
 PIN_MEMORY = True
 
-# ### Helper functions
-
 # # Model 
 
 class UNetBlock(nn.Module):
@@ -165,10 +163,8 @@ class AdaptiveConcatenationModule(nn.Module):
 
 
 class EnhancedUNet(nn.Module):
-    def __init__(self, output_size):
+    def __init__(self):
         super(EnhancedUNet, self).__init__()
-
-        self.output_size = output_size
 
         # Get pretrained encoder part of DPT-MiDaS
         self.midas = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas")
@@ -290,9 +286,6 @@ class EnhancedUNet(nn.Module):
         # Output non-negative depth values
         x = torch.sigmoid(x) * 10
 
-        x = nn.functional.interpolate(
-            x, size=self.output_size, mode="bilinear", align_corners=True
-        )
         return x
 
 # ### Helper functions
