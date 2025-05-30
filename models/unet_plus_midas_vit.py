@@ -201,7 +201,7 @@ class EnhancedUNet(nn.Module):
             # take midas encoder features at different stages (from layers 3, 6, 9, 12)
             # Note: hidden_states[0] is the input embedding
             hidden_states = self.midas.dpt(x, output_hidden_states=True).hidden_states
-            hidden_states = [hidden_states[3], hidden_states[6], hidden_states[9], hidden_states[12]] # Tensors of shape (batch_size, 577, 768)
+            hidden_states = [hidden_states[3], hidden_states[6], hidden_states[9], hidden_states[12]] # Tensors of shape (batch_size, 577, 768) with first channel being classification channel
 
             midas_features = []
             for hidden_state in hidden_states:
@@ -209,8 +209,8 @@ class EnhancedUNet(nn.Module):
                 cls = hidden_state[:, 0, :]
                 cls = cls.view(-1, 1, cls.shape[1])
                 cls = cls.expand(-1, 576, -1)
-                feature = feature + cls
-                feature = feature.permute(0, 2, 1).reshape(x.shape[0], 768, 24, 24) # now has shape (batch_size, 768, 24, 24)
+                feature = feature + cls # add classification channel to the other channels
+                feature = feature.permute(0, 2, 1).reshape(x.shape[0], 768, 24, 24) # reshape to image like feature (batch_size, 768, 24, 24)
                 midas_features.append(feature) 
 
         # Ppoject the 4 midas encoder features to lower channel dimension
