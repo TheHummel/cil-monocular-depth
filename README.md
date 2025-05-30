@@ -12,7 +12,7 @@ This is the pre-trained model from huggingface where we finetuned the decoder on
 
 ## Baseline model 3: MiDaS with full skip connection network:
 
-This is inspired by the paper [Rethinking Skip Connections in Encoder-decoder Networks for Monocular Depth Estimation](https://arxiv.org/abs/2208.13441). The implementation replaces the FusionBlocks in the MiDaS Neck layer (model.dpt.neck) with a custom FusionBlock that performs a more complex feature fusion of different encoder hidden_states. The model is located in (models/dpt_hybrid_midas)[https://github.com/TheHummel/cil-monocular-depth/tree/master/models/dpt_hybrid_midas]. To run this model execute the run_midas_fscn located in [slurm_scripts]([https://github.com/TheHummel/cil-monocular-depth/tree/master/models/dpt_hybrid_midas](https://github.com/TheHummel/cil-monocular-depth/blob/master/slurm_scripts/run_midas_fscn.sh))
+This is inspired by the paper [Rethinking Skip Connections in Encoder-decoder Networks for Monocular Depth Estimation](https://arxiv.org/abs/2208.13441). The implementation replaces the FusionBlocks in the MiDaS Neck layer (model.dpt.neck) with a custom FusionBlock that performs a more complex feature fusion of different encoder hidden_states. The model is located in [models/dpt_hybrid_midas](https://github.com/TheHummel/cil-monocular-depth/tree/master/models/dpt_hybrid_midas). To run this model execute the run_midas_fscn located in [slurm_scripts](https://github.com/TheHummel/cil-monocular-depth/blob/master/slurm_scripts/run_midas_fscn.sh)
 
 ## 1. Variant: UNet with MiDaS-Encoder features:
 
