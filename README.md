@@ -1,6 +1,6 @@
 # Monocular Depth Project for CIL, ETH Zurich (Spring 2025)
 
-For the following 5 models the provided example notebook on kaggle has been used as a base and we have mainly adjusted the model definition section as well as added a function for the scale-invariant RMSE loss.
+For the following 5 models the provided example notebook on kaggle has been used as a base and we have mainly adjusted the model definition for the various experiments as well as added a function for the scale-invariant [RMSE loss](https://github.com/TheHummel/cil-monocular-depth/blob/master/training/loss.py). We now give a short description on the model, link to the model definition in code and how to run the model training for each experiment.
 
 ## Baseline model 1: Basic UNet
 
