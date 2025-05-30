@@ -81,10 +81,8 @@ class FusionBlock(nn.Module):
 # The final model
 
 class EnhancedUNet(nn.Module):
-    def __init__(self, output_size):
+    def __init__(self):
         super(EnhancedUNet, self).__init__()
-        
-        self.output_size = output_size
         
         # get pretrained encoder part of midas
         self.midas = DPTForDepthEstimation.from_pretrained("Intel/dpt-swinv2-base-384")
@@ -192,12 +190,6 @@ class EnhancedUNet(nn.Module):
         # Output non-negative depth values
         x = torch.sigmoid(x) * 10
 
-        x = nn.functional.interpolate(
-                x,
-                size=self.output_size,  
-                mode="bilinear",
-                align_corners=True,
-            )
         return x
 
 # ### Helper functions
@@ -316,7 +308,7 @@ def main():
         )
         print(f"Initially allocated: {torch.cuda.memory_allocated(0) / 1e9:.2f} GB")
      
-    model = EnhancedUNet(INPUT_SIZE)
+    model = EnhancedUNet()
     model = nn.DataParallel(model)
     model = model.to(DEVICE)
     print(f"Using device: {DEVICE}")
