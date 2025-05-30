@@ -12,7 +12,7 @@
 set -e
 ROOT_DIR="../"
 #MODEL_NAME="intel_dpt_large"
-#MODEL_NAME="dpt_hybrid_midas"
+MODEL_NAME="dpt_hybrid_midas"
 MODEL_NAME="unet_fscn"
 MODEL_DIR="${ROOT_DIR}/models/${MODEL_NAME}"
 OUTPUT_DIR="${MODEL_DIR}/output"
