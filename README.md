@@ -18,11 +18,11 @@ This is the pre-trained model from huggingface where we finetuned the decoder on
 This model takes a 4 layer UNet as a base and additionaly runs the input through the frozen encoder layer of the MiDaS model and fuses MiDaS features from different encodder stages into the UNet decoder. To run the training with the Swinv2 backbone execute file [unet_plus_midas_swin.py](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/unet_plus_midas_swin.py), located in the models. For the ViT backbone, run [unet_plus_midas_vit.py](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/unet_plus_midas_vit.py). Model definitions for Swinv2 backbone is [here](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/unet_plus_midas_swin.py#L129-L277) and for ViT backbone [here](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/unet_plus_midas_vit.py#L128-L271). The following diagram depicts the model architecture (with tensor values in the swinv2 version) to help with understanding. 
 ![UNet+MiDaS-Enc](./images/UNetPlusMidas.png)
 
-## Variant 2: MiDaS with full skip connection network:
+## 2. Variant: MiDaS with full skip connection network:
 
 This is inspired by the paper [Rethinking Skip Connections in Encoder-decoder Networks for Monocular Depth Estimation](https://arxiv.org/abs/2208.13441). The implementation replaces the FusionBlocks in the MiDaS Neck layer (model.dpt.neck) with a custom FusionBlock that performs a more complex feature fusion of different encoder hidden_states. The model is located in [models/dpt_hybrid_midas](https://github.com/TheHummel/cil-monocular-depth/tree/master/models/dpt_hybrid_midas). To run this model execute the run_midas_fscn located in [slurm_scripts](https://github.com/TheHummel/cil-monocular-depth/blob/master/slurm_scripts/run_midas_fscn.sh)
 
-## 3. Variant(Combination): UNet with MiDaS-Encoder features and FSCN:
+## 3. Variant (Combination): UNet with MiDaS-Encoder features and FSCN:
 
 This model is the combination of the two variants, where instead of just adding one hidden_state from the MiDaS encoder into the UNet decoder, we take all selected hidden_states from the MiDaS encoder and combine them before fusing them into the UNet pipeline. The code to train this model is located in [unet_plus_midas_vit_and_fscn.py](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/unet_plus_midas_vit_and_fscn.py) under models. Model definitions are located on [line 144](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/unet_plus_midas_vit_and_fscn.py#L144-L380) The following diagram gives a rough overview.
 ![UNet+Midas-Enc with FSCN](./images/UNetPlusMidasWithFSCN.png)
