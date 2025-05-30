@@ -10,7 +10,7 @@ The basic Unet is a bigger version of the UNet given in the provided example on 
 
 ## Baseline model 2: MiDaS Decoder Finetuned:
 
-This is the pre-trained model from huggingface where we finetuned the decoder on the dataset. In our report we made use of both the MiDaS version with [ViT backbone](https://huggingface.co/Intel/dpt-hybrid-midas) and the [Swinv2 backbone](https://huggingface.co/Intel/dpt-swinv2-base-384). Simply execute the file [finetune_midas_decoder.py](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/finetune_midas_decoder.py) in models to run the training for the swinv2 backbone. We omit the finetuned version for the ViT backbone since it is a bit worse than with the swinv2 backbone and we used the swinv2 tuned version as reference baseline in the report. Model definitions starts on [line 126](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/finetune_midas_decoder.py#L126-L148).
+This is the pre-trained model from huggingface where we finetuned the decoder on the dataset. We just import the model and disable gradients for the encoder parameters here to only train the decoder. Simply execute the file [finetune_midas_decoder.py](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/finetune_midas_decoder.py) in models to run the training. Model definitions starts on [line 126](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/finetune_midas_decoder.py#L126-L145).
 
 
 ## 1. Variant: UNet with MiDaS-Encoder features:
