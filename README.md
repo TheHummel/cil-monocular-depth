@@ -16,7 +16,7 @@ This is the pre-trained model from huggingface where we finetuned the decoder on
 ## 1. Variant: UNet with MiDaS-Encoder features:
 
 This model takes a 4 layer UNet as a base and additionaly runs the input through the frozen encoder layer of the MiDaS model and fuses MiDaS features from different encodder stages into the UNet decoder. To run the training with the Swinv2 backbone execute file [unet_plus_midas_swin.py](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/unet_plus_midas_swin.py), located in the models. For the ViT backbone, run [unet_plus_midas_vit.py](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/unet_plus_midas_vit.py). Model definitions for Swinv2 backbone is [here](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/unet_plus_midas_swin.py#L129-L277) and for ViT backbone [here](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/unet_plus_midas_vit.py#L128-L271). The following diagram depicts the model architecture (with tensor values in the swinv2 version) to help with understanding. 
-![UNet+MiDaS-Enc](./images/UNetPlusMidas.png)
+![UNet+MiDaS-Enc](./images/UNetAndMidas.png)
 
 ## 2. Variant: MiDaS with full skip connection network:
 
