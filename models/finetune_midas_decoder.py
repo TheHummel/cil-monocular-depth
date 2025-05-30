@@ -130,7 +130,7 @@ class DPT(nn.Module):
         self.midas = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas")
         self.target_size = target_size 
         
-        for param in self.midas_swinv2.backbone.parameters():
+        for param in self.midas.dpt.parameters():
             param.requires_grad = False
         
 
