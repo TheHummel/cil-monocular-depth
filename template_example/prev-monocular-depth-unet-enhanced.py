@@ -90,11 +90,6 @@ class DepthDataset(Dataset):
             # Load RGB image
             rgb = Image.open(rgb_path).convert("RGB")
             
-            #grayscale = rgb.convert("L")
-            #grayscale = grayscale.filter(ImageFilter.SMOOTH)
-            #edges = grayscale.filter(ImageFilter.FIND_EDGES)
-            #edges = transforms.ToTensor()(edges)
-
             # Load depth map
             depth = np.load(depth_path).astype(np.float32)
             depth = torch.from_numpy(depth)
@@ -109,9 +104,6 @@ class DepthDataset(Dataset):
                 # Add channel dimension if not done by transform
                 depth = depth.unsqueeze(0)
             
-            ## augment input image with edge detection
-            #rgb = torch.cat([rgb, edges], dim=0)
-
             return (
                 rgb,
                 depth,
@@ -124,23 +116,16 @@ class DepthDataset(Dataset):
             # Load RGB image
             rgb = Image.open(rgb_path).convert("RGB")
             
-            #grayscale = rgb.convert("L")
-            #grayscale = grayscale.filter(ImageFilter.SMOOTH)
-            #edges = grayscale.filter(ImageFilter.FIND_EDGES)
-            #edges = transforms.ToTensor()(edges)
-
             # Apply transformations
             if self.transform:
                 rgb = self.transform(rgb)
-            
-            ## augment input image with edge detection
-            #rgb = torch.cat([rgb, edges], dim=0)
 
             return rgb, self.file_list[idx]  # No depth, just return the filename
 
 
-# # Model - U-net
+# # Model 
 
+# UNet Block
 class UNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(UNetBlock, self).__init__()
@@ -155,7 +140,7 @@ class UNetBlock(nn.Module):
         x = self.relu(self.bn2(self.conv2(x)))
         return x
 
-
+# Fusion block to combine MiDaS Encoder features with UNet features
 class FusionBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(FusionBlock, self).__init__()
@@ -168,6 +153,8 @@ class FusionBlock(nn.Module):
         out = torch.cat([unet_feature, midas_feature], dim=1)
         out = self.b(out)
         return unet_feature + out 
+
+# The final model
 
 class EnhancedUNet(nn.Module):
     def __init__(self, output_size):
@@ -187,13 +174,14 @@ class EnhancedUNet(nn.Module):
         self.enc2 = UNetBlock(32, 64)
         self.enc3 = UNetBlock(64, 128)
         self.enc4 = UNetBlock(128, 256)
+        
         # Decoder blocks
         self.dec4 = UNetBlock(256 + 128, 128)
         self.dec3 = UNetBlock(128 + 64, 64)
         self.dec2 = UNetBlock(64 + 32, 32)
         self.dec1 = UNetBlock(32, 32)
         
-        # fusion block
+        # Fusion blocks
         self.f1 = FusionBlock(256 + 128, 256)
         self.f2 = FusionBlock(128 + 128, 128)
         self.f3 = FusionBlock(64 + 128, 64)
@@ -204,7 +192,8 @@ class EnhancedUNet(nn.Module):
 
         # Pooling and upsampling
         self.pool = nn.MaxPool2d(2)
-                                        
+
+        # projections to reduce dimensionality for fewer parameter count
         self.midas_feature_proj1 = nn.Conv2d(128, 128, kernel_size=1, padding=0)
         self.midas_feature_proj2 = nn.Conv2d(256, 128, kernel_size=1, padding=0)
         self.midas_feature_proj3 = nn.Conv2d(512, 128, kernel_size=1, padding=0)
@@ -222,7 +211,7 @@ class EnhancedUNet(nn.Module):
     
             midas_features = self.midas.backbone(x).feature_maps
         
-        # project the 4 midas encoder fetures to lower channel dimension
+        # project the 4 midas encoder fetures to lower channel dimensions
         mf1 = self.midas_feature_proj1(midas_features[0])
         mf2 = self.midas_feature_proj2(midas_features[1])
         mf3 = self.midas_feature_proj3(midas_features[2])
@@ -240,7 +229,7 @@ class EnhancedUNet(nn.Module):
 
         enc4 = self.enc4(x) # (batch_size, 256, 48, 48)
         
-        # fuse unet feature  with midas feature
+        # fuse unet encoder state  with midas encoder state
         x = self.f1(mf4, enc4) # output shape (batch_size, 256, 48, 48)
 
         # Decoder with skip connections
@@ -249,28 +238,36 @@ class EnhancedUNet(nn.Module):
         )
         x = torch.cat([x, enc3], dim=1)
         x = self.dec4(x)
-        
+
+        # fuse decoder output with midas encoder state
         x = self.f2(mf3, x)
         x = nn.functional.interpolate(
             x, size=enc2.shape[2:], mode="bilinear", align_corners=True
         )
+
+        # skip connection with UNet encoder
         x = torch.cat([x, enc2], dim=1)
         x = self.dec3(x)
 
+        # fuse decoder output with midas encoder state
         x = self.f3(mf2, x)
         x = nn.functional.interpolate(
             x, size=enc1.shape[2:], mode="bilinear", align_corners=True
         )
+
+        # skip connection with UNet encoder
         x = torch.cat([x, enc1], dim=1)
         x = self.dec2(x)
-        
+
+        # fuse decoder output with midas encoder state
         x = self.f4(mf1, x)
+        
         x = self.dec1(x)
         x = self.final(x)
 
         # Output non-negative depth values
         x = torch.sigmoid(x) * 10
-        
+
         x = nn.functional.interpolate(
                 x,
                 size=self.output_size,  
