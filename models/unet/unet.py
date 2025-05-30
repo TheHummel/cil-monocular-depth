@@ -20,29 +20,52 @@ class UNetBlock(nn.Module):
 class SimpleUNet(nn.Module):
     def __init__(self):
         super(SimpleUNet, self).__init__()
-
+        
         # Encoder blocks
-        self.enc1 = UNetBlock(3, 64)
-        self.enc2 = UNetBlock(64, 128)
+        self.enc1 = UNetBlock(3, 32)
+        self.enc2 = UNetBlock(32, 64)
+        self.enc3 = UNetBlock(64, 128)
+        self.enc4 = UNetBlock(128, 256)
 
         # Decoder blocks
-        self.dec2 = UNetBlock(128 + 64, 64)
-        self.dec1 = UNetBlock(64, 32)
+        self.dec4 = UNetBlock(256 + 128, 128)
+        self.dec3 = UNetBlock(128 + 64, 64)
+        self.dec2 = UNetBlock(64 + 32, 32)
+        self.dec1 = UNetBlock(32, 32)
 
         # Final layer
         self.final = nn.Conv2d(32, 1, kernel_size=1)
 
         # Pooling and upsampling
         self.pool = nn.MaxPool2d(2)
-
+                                        
     def forward(self, x):
+        
         # Encoder
         enc1 = self.enc1(x)
-        x = self.pool(enc1)
+        x = self.pool(enc1) 
+        
+        enc2 = self.enc2(x)
+        x = self.pool(enc2) 
+        
+        enc3 = self.enc3(x) 
+        x  = self.pool(enc3)
 
-        x = self.enc2(x)
+        x = self.enc4(x)
 
         # Decoder with skip connections
+        x = nn.functional.interpolate(
+            x, size=enc3.shape[2:], mode="bilinear", align_corners=True
+        )
+        x = torch.cat([x, enc3], dim=1)
+        x = self.dec4(x)
+
+        x = nn.functional.interpolate(
+            x, size=enc2.shape[2:], mode="bilinear", align_corners=True
+        )
+        x = torch.cat([x, enc2], dim=1)
+        x = self.dec3(x)
+
         x = nn.functional.interpolate(
             x, size=enc1.shape[2:], mode="bilinear", align_corners=True
         )
@@ -54,5 +77,5 @@ class SimpleUNet(nn.Module):
 
         # Output non-negative depth values
         x = torch.sigmoid(x) * 10
-
+        
         return x
