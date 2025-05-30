@@ -4,11 +4,11 @@ For the following 5 models the provided example notebook on kaggle has been used
 
 ## Baseline model 1: Basic UNet
 
-The basic Unet is a bigger version of the UNet given in the provided example on kaggle with 4 Encoder, Decoder blocks. The associated file can be found in --------.
+The basic Unet is a bigger version of the UNet given in the provided example on kaggle with 4 Encoder, Decoder blocks. The associated file can be found in the models section as [basic_unet.py](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/basic_unet.py) with the model defintion starting on this [line](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/basic_unet.py#L127). To run the training, simply execute the this file.
 
 ## Baseline model 2: MiDaS Decoder Finetuned:
 
-This is the pre-trained model from huggingface where we finetuned the decoder on the dataset. In our report we made use of both the MiDaS version with [ViT backbone](https://huggingface.co/Intel/dpt-hybrid-midas) and the [Swinv2 backbone](https://huggingface.co/Intel/dpt-swinv2-base-384). The File to train either option is located at --------.
+This is the pre-trained model from huggingface where we finetuned the decoder on the dataset. In our report we made use of both the MiDaS version with [ViT backbone](https://huggingface.co/Intel/dpt-hybrid-midas) and the [Swinv2 backbone](https://huggingface.co/Intel/dpt-swinv2-base-384). Simply execute the file [unet_plus_midas_vit.py](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/finetune_midas_decoder.py) in models to run the training for the swinv2 backbone. We omit the finetuned version for the ViT backbone since it is a bit worse than with the swinv2 backbone and we used the swinv2 tuned version as reference baseline in the report. Model definitions is on this [line](https://github.com/TheHummel/cil-monocular-depth/blob/master/models/finetune_midas_decoder.py#L126).
 
 ## Baseline model 3: MiDaS with full skip connection network:
 
