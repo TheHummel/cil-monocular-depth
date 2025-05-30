@@ -4,12 +4,12 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import transforms
 from torch.utils.data import DataLoader
+from transformers import DPTForDepthEstimation
 
 from data.dataset import DepthDataset
 from utils.helpers import (
     ensure_dir,
-    custom_collate_fn,
-    load_model_from_hf,
+    custom_collate_fn
 )
 from training.train import train_model
 from training.loss import SILogLoss
@@ -122,7 +122,7 @@ def main():
     print("Loading pretrained model...")
     
     model_name = "Intel/dpt-hybrid-midas"
-    model = load_model_from_hf(model_name, device=DEVICE)
+    model = DPTForDepthEstimation.from_pretrained(model_name)
 
     # # update skip connections with custom attention
     # for i in range(4):
