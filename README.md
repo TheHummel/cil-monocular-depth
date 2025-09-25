@@ -20,7 +20,10 @@ This model takes a 4 layer UNet as a base and additionaly runs the input through
 
 ## 2. Variant: MiDaS with full skip connection network:
 
-This is inspired by the paper [Rethinking Skip Connections in Encoder-decoder Networks for Monocular Depth Estimation](https://arxiv.org/abs/2208.13441). The implementation replaces the FusionBlocks in the MiDaS Neck layer (model.dpt.neck) with a custom FusionBlock that performs a more complex feature fusion of different encoder hidden_states. For a more precise explanation, see report with related diagrams in the appendix. The model is located in [models/dpt_hybrid_midas](https://github.com/TheHummel/cil-monocular-depth/tree/master/models/dpt_hybrid_midas). To run this model execute the run_midas_fscn located in [slurm_scripts](https://github.com/TheHummel/cil-monocular-depth/blob/master/slurm_scripts/run_midas_fscn.sh)
+This is inspired by the paper [Rethinking Skip Connections in Encoder-decoder Networks for Monocular Depth Estimation](https://arxiv.org/abs/2208.13441). The implementation replaces the FusionBlocks in the MiDaS Neck layer (model.dpt.neck) with a custom FusionBlock that performs a more complex feature fusion of different encoder hidden_states. For a more precise explanation, see report with related diagrams in the appendix. The model is located in [models/dpt_hybrid_midas](https://github.com/TheHummel/cil-monocular-depth/tree/master/models/dpt_hybrid_midas). To run this model execute the run_midas_fscn located in [slurm_scripts](https://github.com/TheHummel/cil-monocular-depth/blob/master/slurm_scripts/run_midas_fscn.sh). The following figure displays how the encoder stages are connected with the decoder stages via a full skip connection network (FSCN):
+![FSCN](./images/fscn.jpg)
+The adaptive concatenation module (ACM), consisting of a Convolutional Block Attention Module (CBAM) is used to concatenate the different encoder stages:
+![ACM](./images/acm.jpg)
 
 ## 3. Variant (Combination): UNet with MiDaS-Encoder features and FSCN:
 
